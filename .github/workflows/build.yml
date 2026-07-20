@@ -47,10 +47,14 @@ jobs:
           grep -rn 'source "' --include="Kconfig*" . 2>/dev/null | \
             sed 's/.*source "//; s/".*//' | sort -u | while read -r kf; do
             if [ -n "$kf" ] && [ ! -f "$kf" ]; then
-              rm -rf "$(dirname "$kf")" 2>/dev/null
+              # Walk up to find and remove gitlink files blocking mkdir
+              dir="$(dirname "$kf")"
+              while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+                if [ -f "$dir" ]; then rm -rf "$dir"; break; fi
+                dir=$(dirname "$dir")
+              done
               mkdir -p "$(dirname "$kf")"
-              echo "# stub Kconfig" > "$kf"
-              echo "  Stub: $kf"
+              echo "# stub Kconfig" > "$kf" 2>/dev/null && echo "  Stub: $kf"
             fi
           done
 
@@ -79,7 +83,11 @@ jobs:
               break
             fi
             echo "  Fixing: $MISSING"
-            rm -rf "$(dirname "$MISSING")" 2>/dev/null
+            dir="$(dirname "$MISSING")"
+            while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+              if [ -f "$dir" ]; then rm -rf "$dir"; break; fi
+              dir=$(dirname "$dir")
+            done
             mkdir -p "$(dirname "$MISSING")"
             echo "# stub Kconfig" > "$MISSING"
           done
