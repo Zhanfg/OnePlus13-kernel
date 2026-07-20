@@ -84,6 +84,20 @@ jobs:
           git diff --stat HEAD 2>/dev/null | tail -5 || true
           exit 0
 
+      - name: Debug Makefile
+        run: |
+          cd kernel_source
+          echo "=== make version ==="
+          make --version | head -2
+          echo "=== make help (first 30 lines) ==="
+          make help 2>&1 | head -30
+          echo "=== Check key files ==="
+          ls -la Makefile scripts/Makefile scripts/kconfig/Makefile arch/arm64/Makefile 2>&1
+          echo "=== Try defconfig ==="
+          make ARCH=arm64 defconfig 2>&1 | tail -10
+          echo "=== Check .config ==="
+          head -5 .config 2>/dev/null || echo "No .config"
+
       - name: Configure Kernel
         run: |
           cd kernel_source
