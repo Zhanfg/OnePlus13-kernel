@@ -1,0 +1,112 @@
+name: Build Kernel
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  KERNEL_BRANCH: oneplus/sm8750_b_16.0.0_oneplus_13
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison build-essential ccache cpio curl flex git jq libelf-dev libncurses-dev libssl-dev lzip python3 rsync unzip zip zlib1g-dev zstd llvm clang lld gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu device-tree-compiler
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 --branch "${{ env.KERNEL_BRANCH }}" https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750.git kernel_source
+          cd kernel_source
+          echo "KERNEL_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          KERNEL_VER=$(make kernelversion 2>/dev/null || echo "unknown")
+          echo "KERNEL_VERSION=$KERNEL_VER" >> $GITHUB_ENV
+          echo "Kernel: $KERNEL_VER"
+
+      - name: Configure and Build
+        run: |
+          cd kernel_source
+          export ARCH=arm64 CC=clang CXX=clang++
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          # Fix missing oplus_cpu Kconfig (gitlink/submodule not populated)
+          rm -rf kernel/oplus_cpu
+          mkdir -p kernel/oplus_cpu
+          printf 'config OPLUS_FEATURE_CPU\n    bool "OPLUS CPU"\n    default y\n' > kernel/oplus_cpu/Kconfig
+
+          # Configure
+          cp arch/arm64/configs/gki_defconfig .config
+          make ARCH=arm64 CC=clang olddefconfig 2>&1 | tail -5
+
+          # Merge vendor configs
+          if [ -f arch/arm64/configs/vendor/sun_oplus_common.config ]; then
+            ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/sun_oplus_common.config 2>&1 | tail -3
+          fi
+          if [ -f arch/arm64/configs/vendor/sun_consolidate.config ]; then
+            ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/sun_consolidate.config 2>&1 | tail -3
+          fi
+
+          # Force key configs
+          for cfg in "CONFIG_KALLSYMS=y" "CONFIG_KALLSYMS_ALL=y" "CONFIG_OVERLAY_FS=y" "CONFIG_ZRAM=y" "CONFIG_NET_SCH_FQ=y" "CONFIG_WIREGUARD=y"; do
+            key="${cfg%=*}"
+            if grep -q "^${key}=" .config 2>/dev/null; then sed -i "s|^${key}=.*|${cfg}|" .config
+            elif grep -q "^# ${key} is not set" .config 2>/dev/null; then sed -i "s|^# ${key} is not set|${cfg}|" .config
+            else echo "$cfg" >> .config; fi
+          done
+          make ARCH=arm64 CC=clang olddefconfig 2>&1 | tail -3
+
+          # Build
+          echo "=== Building kernel ==="
+          make ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image 2>&1 | tee build.log | tail -80
+
+          if [ -f arch/arm64/boot/Image ]; then
+            echo "=== BUILD SUCCESS ==="
+            echo "Size: $(du -h arch/arm64/boot/Image | cut -f1)"
+          else
+            echo "=== BUILD FAILED ==="
+            tail -100 build.log
+            exit 1
+          fi
+
+      - name: Package AK3
+        run: |
+          IMAGE="kernel_source/arch/arm64/boot/Image"
+          [ -f "$IMAGE" ] || exit 1
+          mkdir -p ak3/META-INF/com/google/android
+          cp anykernel/anykernel.sh ak3/
+          cp anykernel/service.sh ak3/
+          cp anykernel/module.prop ak3/
+          cp anykernel/META-INF/com/google/android/update-binary ak3/META-INF/com/google/android/
+          cp anykernel/META-INF/com/google/android/updater-script ak3/META-INF/com/google/android/
+          cp "$IMAGE" ak3/Image
+          ZIP="OnePlus13-sun-custom.zip"
+          cd ak3 && zip -r9 "../$ZIP" . && cd ..
+          sha256sum "$ZIP" > "${ZIP}.sha256"
+          echo "=== AK3 Complete ==="
+          du -h "$ZIP"
+          cat "${ZIP}.sha256"
+
+      - name: Upload AK3
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlus13-AK3
+          path: |
+            *.zip
+            *.sha256
+
+      - name: Upload Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            kernel_source/build.log
+            kernel_source/.config
+          if-no-files-found: ignore
