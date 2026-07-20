@@ -1,6 +1,11 @@
 name: Kernel Build AK3
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-ak3.yml'
+      - 'TRIGGER_BUILD'
   workflow_dispatch:
     inputs:
       build_variant:
