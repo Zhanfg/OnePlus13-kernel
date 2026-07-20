@@ -32,86 +32,69 @@ jobs:
 
       - name: Configure and Build
         run: |
+          set +e
           cd kernel_source
           export ARCH=arm64 CC=clang CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          # Fix missing oplus_cpu Kconfig (gitlink/submodule not populated)
+          # 1. Fix missing oplus_cpu Kconfig
           rm -rf kernel/oplus_cpu
           mkdir -p kernel/oplus_cpu
           printf 'config OPLUS_FEATURE_CPU\n    bool "OPLUS CPU"\n    default y\n' > kernel/oplus_cpu/Kconfig
 
-          # Copy base defconfig
-          cp arch/arm64/configs/gki_defconfig .config
-
-          # Pre-scan ALL Kconfig source references and create stubs for missing files
-          set +e
-          grep -rn '^source "' --include="Kconfig*" . 2>/dev/null | \
+          # 2. Pre-scan ALL Kconfig source references and create stubs for missing files
+          echo "=== Pre-scanning Kconfig sources ==="
+          grep -rn 'source "' --include="Kconfig*" . 2>/dev/null | \
             sed 's/.*source "//; s/".*//' | sort -u | while read -r kf; do
             if [ -n "$kf" ] && [ ! -f "$kf" ]; then
               rm -rf "$(dirname "$kf")" 2>/dev/null
               mkdir -p "$(dirname "$kf")"
               echo "# stub Kconfig" > "$kf"
-              echo "Created stub: $kf"
+              echo "  Stub: $kf"
             fi
           done
 
-          # Also fix any remaining via olddefconfig loop
-          for i in $(seq 1 30); do
-            ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1)
-            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
-            if [ -z "$MISSING" ]; then
-              echo "olddefconfig OK after $i iterations"
-              break
-            fi
-            echo "Creating stub: $MISSING"
-            rm -rf "$(dirname "$MISSING")" 2>/dev/null
-            mkdir -p "$(dirname "$MISSING")"
-            echo "# stub Kconfig" > "$MISSING"
-          done
-
-          # Also fix syncconfig errors
-          for i in $(seq 1 30); do
-            ERR=$(make ARCH=arm64 CC=clang syncconfig 2>&1)
-            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
-            if [ -z "$MISSING" ]; then
-              echo "syncconfig OK after $i iterations"
-              break
-            fi
-            echo "Creating stub (syncconfig): $MISSING"
-            rm -rf "$(dirname "$MISSING")" 2>/dev/null
-            mkdir -p "$(dirname "$MISSING")"
-            echo "# stub Kconfig" > "$MISSING"
-          done
-          set -e
-
-          # Merge vendor configs
-          if [ -f arch/arm64/configs/vendor/sun_oplus_common.config ]; then
+          # 3. Copy base defconfig and merge vendor configs
+          cp arch/arm64/configs/gki_defconfig .config
+          [ -f arch/arm64/configs/vendor/sun_oplus_common.config ] && \
             ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/sun_oplus_common.config 2>&1 | tail -3
-          fi
-          if [ -f arch/arm64/configs/vendor/sun_consolidate.config ]; then
+          [ -f arch/arm64/configs/vendor/sun_consolidate.config ] && \
             ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/sun_consolidate.config 2>&1 | tail -3
-          fi
 
-          # Force key configs
+          # 4. Force key configs
           for cfg in "CONFIG_KALLSYMS=y" "CONFIG_KALLSYMS_ALL=y" "CONFIG_OVERLAY_FS=y" "CONFIG_ZRAM=y" "CONFIG_NET_SCH_FQ=y" "CONFIG_WIREGUARD=y"; do
             key="${cfg%=*}"
             if grep -q "^${key}=" .config 2>/dev/null; then sed -i "s|^${key}=.*|${cfg}|" .config
             elif grep -q "^# ${key} is not set" .config 2>/dev/null; then sed -i "s|^# ${key} is not set|${cfg}|" .config
             else echo "$cfg" >> .config; fi
           done
-          make ARCH=arm64 CC=clang olddefconfig 2>&1 | tail -3
 
-          # Build
+          # 5. Auto-fix loop: resolve ALL missing Kconfig via olddefconfig + syncconfig
+          echo "=== Resolving Kconfig ==="
+          for i in $(seq 1 50); do
+            ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1; make ARCH=arm64 CC=clang syncconfig 2>&1)
+            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
+            if [ -z "$MISSING" ]; then
+              echo "  Kconfig resolved after $i iterations"
+              break
+            fi
+            echo "  Fixing: $MISSING"
+            rm -rf "$(dirname "$MISSING")" 2>/dev/null
+            mkdir -p "$(dirname "$MISSING")"
+            echo "# stub Kconfig" > "$MISSING"
+          done
+
+          # 6. Build kernel
           echo "=== Building kernel ==="
           make ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image 2>&1 | tee build.log | tail -80
 
           if [ -f arch/arm64/boot/Image ]; then
             echo "=== BUILD SUCCESS ==="
             echo "Size: $(du -h arch/arm64/boot/Image | cut -f1)"
+            exit 0
           else
             echo "=== BUILD FAILED ==="
-            tail -100 build.log
+            tail -100 build.log 2>/dev/null || echo "no build.log"
             exit 1
           fi
 
