@@ -56,6 +56,7 @@ jobs:
       - name: Download and Apply Patches
         if: ${{ github.event.inputs.apply_patches != 'false' }}
         run: |
+          set +e
           cd kernel_source
           echo "=== Downloading patch repos ==="
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git /tmp/ReSukiSU 2>/dev/null && echo "ReSukiSU OK" || echo "ReSukiSU skip"
@@ -67,7 +68,7 @@ jobs:
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git /tmp/Re-Kernel 2>/dev/null && echo "ReKernel OK" || echo "ReKernel skip"
           git clone --depth=1 https://github.com/Goldzxcbug/Droidspaces_Kernel_patch.git /tmp/Droidspaces 2>/dev/null && echo "Droidspaces OK" || echo "Droidspaces skip"
           echo "=== Applying patches (tolerant) ==="
-          if [ -d /tmp/ReSukiSU/kernel ]; then cp -r /tmp/ReSukiSU/kernel/* . 2>/dev/null; echo "ReSukiSU applied"; fi
+          if [ -d /tmp/ReSukiSU/kernel ]; then cp -r /tmp/ReSukiSU/kernel/* . 2>/dev/null || true; echo "ReSukiSU applied"; fi
           for repo in susfs4ksu/kernel_patches SCHED_PATCH WildKernels/bbr WildKernels/common/ntsync WildKernels/common SukiSU_patch Re-Kernel Droidspaces; do
             dir="/tmp/$repo"
             [ -d "$dir" ] || continue
@@ -81,6 +82,7 @@ jobs:
           fi
           echo "=== Patches done ==="
           git diff --stat HEAD 2>/dev/null | tail -5 || true
+          exit 0
 
       - name: Configure Kernel
         run: |
