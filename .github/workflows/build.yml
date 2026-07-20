@@ -55,7 +55,7 @@ jobs:
               break
             fi
             echo "Creating stub: $MISSING"
-            mkdir -p "$(dirname "$MISSING")"
+            mkdir -p "$(dirname "$MISSING")" 2>/dev/null || { rm -rf "$(dirname "$MISSING")"; mkdir -p "$(dirname "$MISSING")"; }
             echo "# stub Kconfig" > "$MISSING"
           done
           set -e
