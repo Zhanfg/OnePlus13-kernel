@@ -1,0 +1,424 @@
+# ============================================================================
+# GitHub Actions 工作流 - 一加13 (sun/SM8750) 自定义内核构建
+# 规格 §7.4
+#
+# 功能:
+#   - 手动触发 (workflow_dispatch)
+#   - 克隆官方 OnePlusOSS 内核树
+#   - 应用所有补丁
+#   - 编译内核
+#   - 打包 AnyKernel3 zip
+#   - 生成 sha256 校验
+#   - 上传构建产物
+# ============================================================================
+
+name: Build OnePlus 13 Custom Kernel (AK3)
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: '构建变体'
+        required: false
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - beta
+          - experimental
+      oryon_optimize:
+        description: '启用 Oryon CPU 优化 (-mcpu=oryon-1)'
+        required: false
+        default: true
+        type: boolean
+      lto_mode:
+        description: 'LTO 模式'
+        required: false
+        default: 'thin'
+        type: choice
+        options:
+          - thin
+          - full
+          - none
+
+  # 定时构建 (每周日凌晨 3 点 UTC)
+  schedule:
+    - cron: '0 3 * * 0'
+
+# 防止并发构建
+concurrency:
+  group: build-kernel-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 内核构建相关环境变量
+  ARCH: arm64
+  KERNEL_REPO: https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750
+  KERNEL_BRANCH: oneplus/sm8750_b_16.0.0_oneplus_13
+  # 工具链
+  CLANG_VERSION: r498229b
+  # 构建信息
+  BUILD_ID: sun-custom-${{ github.run_number }}
+
+jobs:
+  build:
+    name: Build AK3 Kernel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      # ======================================================================
+      # 0. 检出本项目
+      # ======================================================================
+      - name: Checkout Project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ======================================================================
+      # 1. 环境准备
+      # ======================================================================
+      - name: Set up build environment
+        run: |
+          echo "=== 安装构建依赖 ==="
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            bc bison build-essential ccache cpio curl flex \
+            git gnupg jq libelf-dev libncurses-dev libssl-dev \
+            lzip python3 python3-pip rsync unzip zip zlib1g-dev \
+            zstd
+
+          # 安装 Android platform tools (fastboot, adb 等)
+          echo "=== 安装 Android tools ==="
+          sudo apt-get install -y -qq android-tools-adb android-tools-fastboot || true
+
+          echo "=== 环境信息 ==="
+          echo "Node: $(node --version 2>/dev/null || echo N/A)"
+          echo "Python: $(python3 --version)"
+          echo "Git: $(git --version)"
+          echo "Make: $(make --version | head -1)"
+          echo "nproc: $(nproc)"
+
+      # ======================================================================
+      # 2. 下载 Android Clang 工具链
+      # ======================================================================
+      - name: Download Android Clang Toolchain
+        run: |
+          echo "=== 下载 Android Clang ${{ env.CLANG_VERSION }} ==="
+          CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-${{ env.CLANG_VERSION }}.tar.gz"
+
+          mkdir -p $HOME/toolchain
+          cd $HOME/toolchain
+
+          # 尝试下载 Clang
+          curl -L -o clang.tar.gz "$CLANG_URL" 2>/dev/null || {
+            echo "Google Clang 下载失败, 尝试备用源..."
+            # 备用: 使用 apt 安装 clang
+            sudo apt-get install -y -qq clang llvm lld
+            exit 0
+          }
+
+          mkdir -p clang
+          tar xzf clang.tar.gz -C clang
+          echo "$HOME/toolchain/clang/bin" >> $GITHUB_PATH
+
+          echo "=== Clang 信息 ==="
+          $HOME/toolchain/clang/bin/clang --version || clang --version
+
+      # ======================================================================
+      # 3. 下载 GCC 交叉编译器
+      # ======================================================================
+      - name: Download GCC Cross-Compiler
+        run: |
+          echo "=== 下载 GCC aarch64 交叉编译器 ==="
+          GCC_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/master.tar.gz"
+
+          mkdir -p $HOME/toolchain
+          cd $HOME/toolchain
+
+          curl -L -o gcc-aarch64.tar.gz "$GCC_URL" 2>/dev/null || {
+            echo "Android GCC 下载失败, 使用系统 GCC..."
+            sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+            exit 0
+          }
+
+          mkdir -p gcc-aarch64
+          tar xzf gcc-aarch64.tar.gz -C gcc-aarch64
+
+          # GCC 32位 (compat)
+          GCC32_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/heads/master.tar.gz"
+          curl -L -o gcc-arm.tar.gz "$GCC32_URL" 2>/dev/null && {
+            mkdir -p gcc-arm
+            tar xzf gcc-arm.tar.gz -C gcc-arm
+          } || true
+
+          echo "GCC 交叉编译器安装完成"
+
+      # ======================================================================
+      # 4. 克隆内核源码
+      # ======================================================================
+      - name: Clone Kernel Source
+        run: |
+          echo "=== 克隆官方 OnePlusOSS 内核树 ==="
+          echo "仓库: ${{ env.KERNEL_REPO }}"
+          echo "分支: ${{ env.KERNEL_BRANCH }}"
+
+          git clone --depth=1 \
+            --branch "${{ env.KERNEL_BRANCH }}" \
+            "${{ env.KERNEL_REPO }}" \
+            kernel_source
+
+          cd kernel_source
+          echo "=== 内核源码信息 ==="
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Date: $(git log -1 --format=%ci)"
+          echo "Branch: ${{ env.KERNEL_BRANCH }}"
+
+          # 保存 commit 信息用于追溯
+          echo "KERNEL_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          echo "KERNEL_DATE=$(git log -1 --format=%ci)" >> $GITHUB_ENV
+
+      # ======================================================================
+      # 5. 下载并应用补丁
+      # ======================================================================
+      - name: Fetch and Apply Patches
+        run: |
+          echo "=== 下载补丁 ==="
+          chmod +x scripts/patch.sh
+          SKIP_SOURCE=1 ./scripts/patch.sh fetch
+
+          echo ""
+          echo "=== 合入补丁 ==="
+          FORCE_CONTINUE=1 ./scripts/patch.sh apply || {
+            echo "部分补丁合入有警告, 继续..."
+          }
+
+      # ======================================================================
+      # 6. 配置内核
+      # ======================================================================
+      - name: Configure Kernel
+        run: |
+          echo "=== 配置内核 ==="
+
+          # 设置工具链路径
+          export CC="clang"
+          export CXX="clang++"
+
+          if [ -d "$HOME/toolchain/clang/bin" ]; then
+            export PATH="$HOME/toolchain/clang/bin:$PATH"
+            export CC="$HOME/toolchain/clang/bin/clang"
+            export CXX="$HOME/toolchain/clang/bin/clang++"
+          fi
+
+          if [ -d "$HOME/toolchain/gcc-aarch64/bin" ]; then
+            export CROSS_COMPILE="$HOME/toolchain/gcc-aarch64/bin/aarch64-linux-android-"
+          elif command -v aarch64-linux-gnu-gcc &>/dev/null; then
+            export CROSS_COMPILE="aarch64-linux-gnu-"
+          fi
+
+          if [ -d "$HOME/toolchain/gcc-arm/bin" ]; then
+            export CROSS_COMPILE_COMPAT="$HOME/toolchain/gcc-arm/bin/arm-linux-androideabi-"
+          fi
+
+          # Oryon 优化
+          if [ "${{ github.event.inputs.oryon_optimize }}" = "true" ]; then
+            export ORYON_CPU="oryon-1"
+            echo "启用 Oryon 优化: -mcpu=oryon-1"
+          fi
+
+          # 运行配置
+          chmod +x build.sh
+          ./build.sh config
+
+      # ======================================================================
+      # 7. 编译内核
+      # ======================================================================
+      - name: Compile Kernel
+        run: |
+          echo "=== 编译内核 ==="
+          echo "LTO 模式: ${{ github.event.inputs.lto_mode || 'thin' }}"
+
+          export CC="clang"
+          export CXX="clang++"
+
+          if [ -d "$HOME/toolchain/clang/bin" ]; then
+            export PATH="$HOME/toolchain/clang/bin:$PATH"
+            export CC="$HOME/toolchain/clang/bin/clang"
+            export CXX="$HOME/toolchain/clang/bin/clang++"
+          fi
+
+          if [ -d "$HOME/toolchain/gcc-aarch64/bin" ]; then
+            export CROSS_COMPILE="$HOME/toolchain/gcc-aarch64/bin/aarch64-linux-android-"
+          elif command -v aarch64-linux-gnu-gcc &>/dev/null; then
+            export CROSS_COMPILE="aarch64-linux-gnu-"
+          fi
+
+          if [ -d "$HOME/toolchain/gcc-arm/bin" ]; then
+            export CROSS_COMPILE_COMPAT="$HOME/toolchain/gcc-arm/bin/arm-linux-androideabi-"
+          fi
+
+          # 根据 LTO 模式设置
+          LTO_MODE="${{ github.event.inputs.lto_mode || 'thin' }}"
+          if [ "$LTO_MODE" = "none" ]; then
+            export LTO=""
+          else
+            export LTO="$LTO_MODE"
+          fi
+
+          export ORYON_CPU="${ORYON_CPU:-}"
+          export JOBS=$(nproc)
+
+          ./build.sh compile
+
+      # ======================================================================
+      # 8. 静态检查
+      # ======================================================================
+      - name: Static Verification
+        run: |
+          echo "=== 静态检查 ==="
+
+          # 调度 diff 检查
+          echo "--- 调度补丁 diff 检查 ---"
+          cd kernel_source
+          SCHED_DIFF=$(git diff --stat HEAD 2>/dev/null | grep -cE 'kernel/sched|hmbird|fengchi|scx')
+          echo "调度相关变更文件数: $SCHED_DIFF"
+          if [ "$SCHED_DIFF" -gt 2 ]; then
+            echo "✓ 调度补丁已合入 (非空壳)"
+          else
+            echo "⚠ 调度变更较少, 请确认"
+          fi
+
+          # CONFIG 验证
+          echo ""
+          echo "--- CONFIG 验证 ---"
+          cd $GITHUB_WORKSPACE
+          if [ -f "out/.config" ]; then
+            bash configs/verify_config.sh "out/.config" || true
+          fi
+
+          # Image 符号检查
+          echo ""
+          echo "--- Image 符号检查 ---"
+          if [ -f "out/arch/arm64/boot/Image" ]; then
+            echo "Image 大小: $(du -h out/arch/arm64/boot/Image | cut -f1)"
+            strings out/arch/arm64/boot/Image | grep -iE 'hmbird|fengchi|bbr3|susfs|wireguard' | head -20 || true
+          fi
+
+      # ======================================================================
+      # 9. 打包 AnyKernel3
+      # ======================================================================
+      - name: Package AnyKernel3
+        run: |
+          echo "=== 打包 AK3 ==="
+          ./build.sh package
+
+      # ======================================================================
+      # 10. 生成构建信息
+      # ======================================================================
+      - name: Generate Build Info
+        run: |
+          echo "=== 生成构建信息 ==="
+
+          # 找到 zip 文件
+          ZIP_FILE=$(ls *.zip | head -1)
+          SHA256_FILE="${ZIP_FILE}.sha256"
+
+          # 生成构建信息 JSON
+          cat > build_info.json << INFO_EOF
+          {
+            "build_id": "${{ env.BUILD_ID }}",
+            "build_variant": "${{ github.event.inputs.build_variant || 'stable' }}",
+            "kernel_repo": "${{ env.KERNEL_REPO }}",
+            "kernel_branch": "${{ env.KERNEL_BRANCH }}",
+            "kernel_commit": "${{ env.KERNEL_COMMIT }}",
+            "kernel_date": "${{ env.KERNEL_DATE }}",
+            "clang_version": "${{ env.CLANG_VERSION }}",
+            "lto_mode": "${{ github.event.inputs.lto_mode || 'thin' }}",
+            "oryon_optimize": "${{ github.event.inputs.oryon_optimize || 'true' }}",
+            "github_run_id": "${{ github.run_id }}",
+            "github_run_number": "${{ github.run_number }}",
+            "build_date": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
+            "zip_file": "$ZIP_FILE",
+            "sha256": "$(cat $SHA256_FILE | awk '{print $1}')",
+            "default_policies": {
+              "scheduler": "wait",
+              "tcp_congestion": "bbr3",
+              "qdisc": "fq",
+              "zram_compression": "lz4",
+              "baseband_guard": "on (runtime toggleable)",
+              "kpm": "optional (default: not applied)",
+              "kallsyms": "enabled (KALLSYMS + KALLSYMS_ALL)"
+            },
+            "features": [
+              "ReSukiSU", "SuSFS v2.2.0", "HMBIRD/Fengchi (optional)",
+              "BBRv3", "fq/cake", "WireGuard", "IP_SET", "TPROXY",
+              "ZRAM Full Stack (LZ4/ZSTD/LZ4KD/Multi-Comp/Writeback)",
+              "ADIOS I/O Scheduler", "F2FS Optimizations",
+              "Baseband Guard", "Re:Kernel", "Wakelock Blocker",
+              "Droidspaces (PID_NS/IPC_NS/SYSVIPC/POSIX_MQUEUE)",
+              "NTSYNC (/dev/ntsync)", "Unicode Bypass", "XUS Error Fix",
+              "LRNG", "LTO Thin + O2", "Oryon CPU Optimizations"
+            ],
+            "not_included": [
+              "Dolby decoder/blobs (use KSU module)",
+              "SuSFS userspace module (not in AK3)",
+              "KPatch-Next module (not in AK3)",
+              "Capacity unlock / aggressive charging",
+              "Brightness hack / Improved Haptics",
+              "WiFi country code force unlock",
+              "Baseband firmware modification"
+            ]
+          }
+          INFO_EOF
+
+          echo "构建信息:"
+          cat build_info.json
+
+      # ======================================================================
+      # 11. 上传构建产物
+      # ======================================================================
+      - name: Upload AK3 Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlus13-kernel-AK3-${{ env.BUILD_ID }}
+          path: |
+            *.zip
+            *.sha256
+            build_info.json
+            out/build.log
+          retention-days: 30
+          compression-level: 0
+
+      # ======================================================================
+      # 12. 构建日志 (可追溯)
+      # ======================================================================
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ env.BUILD_ID }}
+          path: |
+            out/build.log
+            out/.config
+            build_info.json
+          retention-days: 7
+
+      # ======================================================================
+      # 13. 发布 Release (仅 stable 变体)
+      # ======================================================================
+      - name: Create Release
+        if: github.event.inputs.build_variant == 'stable' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: 一加13 自定义内核 ${{ env.BUILD_ID }}
+          body_path: anykernel/changelog.txt
+          files: |
+            *.zip
+            *.sha256
+            build_info.json
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

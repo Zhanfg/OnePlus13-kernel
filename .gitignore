@@ -1,0 +1,49 @@
+# Kernel source tree (cloned at build time)
+kernel_source/
+
+# Build outputs
+out/
+build/
+Image*
+*.ko
+*.o
+*.mod.c
+.modules_dep
+
+# AnyKernel3 outputs
+*.zip
+anykernel/Image*
+anykernel/dtbo.img
+anykernel/*.dtb
+
+# Toolchain
+toolchain/
+clang/
+gcc/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Logs
+*.log
+build_*.log
+
+# Sensitive
+.env
+*.pem
+*.key

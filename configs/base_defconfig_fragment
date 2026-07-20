@@ -1,0 +1,110 @@
+# ============================================================================
+# 基础配置碎片 - 一加13 (sun/SM8750) 自定义内核
+# 适用于 ColorOS 16 国行 | 基准: OnePlusOSS OOS 内核树
+# ============================================================================
+
+# --- 内核基础 ---
+CONFIG_LOCALVERSION="-sun-custom"
+CONFIG_KALLSYMS=y
+CONFIG_KALLSYMS_ALL=y
+
+# --- Root: ReSukiSU & SuSFS ---
+# KSU 已由 ReSukiSU 补丁自动配置
+# SuSFS v2.2.0 相关（具体由补丁提供）：
+# CONFIG_KSU_SUSFS=y  (由补丁设置)
+
+# --- hy / Mountify ---
+CONFIG_OVERLAY_FS=y
+CONFIG_TMPFS_XATTR=y
+CONFIG_TMPFS_POSIX_ACL=y
+
+# --- 调度：默认 wait ---
+# 默认调度策略使用 wait；HMBIRD/SCX 由补丁提供，可通过 sysfs 切换
+# CONFIG_SCHED_WAIT 相关将在补丁合入后配置
+
+# --- 网络栈：BBRv3 / fq / cake ---
+CONFIG_TCP_CONG_BBR=y
+CONFIG_TCP_CONG_BBR3=y            # WildKernels BBRv3 补丁提供
+CONFIG_DEFAULT_TCP_CONG="bbr3"
+CONFIG_NET_SCH_FQ=y
+CONFIG_NET_SCH_FQ_CODEL=y
+CONFIG_NET_SCH_CAKE=y
+CONFIG_DEFAULT_FQ=y
+
+# netfilter / IP_SET 全套
+CONFIG_NETFILTER=y
+CONFIG_NETFILTER_ADVANCED=y
+CONFIG_NF_CONNTRACK=y
+CONFIG_NF_CONNTRACK_IPV4=y
+CONFIG_NF_CONNTRACK_IPV6=y
+CONFIG_NF_NAT=y
+CONFIG_NF_NAT_IPV4=y
+CONFIG_NF_NAT_IPV6=y
+CONFIG_NF_TABLES=y
+CONFIG_NF_TABLES_IPV4=y
+CONFIG_NF_TABLES_IPV6=y
+CONFIG_NF_TPROXY=y
+CONFIG_NF_REDIRECT=y
+CONFIG_IP_SET=y
+CONFIG_IP_SET_HASH_IP=y
+CONFIG_IP_SET_HASH_NET=y
+CONFIG_IP_SET_HASH_NETPORT=y
+CONFIG_IP_SET_LIST_SET=y
+
+# IPv6 隐私扩展
+CONFIG_IPV6_PRIVACY=y
+
+# WireGuard
+CONFIG_WIREGUARD=y
+
+# --- I/O 调度：ADIOS ---
+# 由 cctv18/firelzrd ADIOS 补丁提供 (6.6 移植)
+
+# --- ZRAM 全栈 ---
+CONFIG_ZRAM=y
+CONFIG_ZRAM_DEFAULT_COMP_LZ4=y
+CONFIG_ZRAM_MULTI_COMP=y
+CONFIG_ZRAM_WRITEBACK=y
+CONFIG_ZRAM_TRACK_ENTRY_ACTIME=y
+CONFIG_ZRAM_LZ4=y
+CONFIG_ZRAM_LZ4HC=y
+CONFIG_ZRAM_ZSTD=y
+CONFIG_ZRAM_LZ4KD=y                  # SukiSU 补丁提供
+
+# 默认压缩算法: lz4
+# 由 init 脚本确认 default_comp_algorithm=lz4
+
+# --- F2FS 微优化 ---
+CONFIG_F2FS_FS=y
+# 优化由 WildKernels f2fs_* 补丁提供
+
+# --- 通信/安全：Baseband Guard ---
+# BBG 由 vc-teahouse/Baseband-guard 补丁提供
+# 默认开启，运行时可关闭
+
+# --- 省电：Re:Kernel + Wakelock Blocker ---
+# Re:Kernel 由 Sakion-Team/Re-Kernel 补丁提供
+# Wakelock Blocker 由 WildKernels 补丁提供
+
+# --- 容器/兼容 ---
+# Droidspaces: 命名空间
+CONFIG_PID_NS=y
+CONFIG_IPC_NS=y
+CONFIG_UTS_NS=y
+CONFIG_USER_NS=y
+CONFIG_NET_NS=y
+CONFIG_CGROUP_NS=y
+CONFIG_TIME_NS=y
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+
+# NTSYNC
+CONFIG_NTSYNC=y                      # WildKernels ntsync 补丁提供
+
+# --- LRNG ---
+CONFIG_LRNG=y                        # Epicmann 等补丁提供
+
+# --- 编译优化 ---
+CONFIG_LTO_CLANG_THIN=y
+CONFIG_ARM64_VA_BITS_48=y
+CONFIG_ARM64_VA_BITS=48
