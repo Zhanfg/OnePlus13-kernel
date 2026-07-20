@@ -86,26 +86,30 @@ jobs:
 
       - name: Debug Makefile
         run: |
+          set +e
           cd kernel_source
           echo "=== Fix missing oplus_cpu Kconfig ==="
+          rm -rf kernel/oplus_cpu
           mkdir -p kernel/oplus_cpu
-          if [ ! -f kernel/oplus_cpu/Kconfig ]; then
-            echo 'config OPLUS_FEATURE_CPU' > kernel/oplus_cpu/Kconfig
-            echo '    bool "OPLUS CPU Features"' >> kernel/oplus_cpu/Kconfig
-            echo '    default y' >> kernel/oplus_cpu/Kconfig
-            echo "" >> kernel/oplus_cpu/Kconfig
-            echo 'menu "OPLUS CPU Configuration"' >> kernel/oplus_cpu/Kconfig
-            echo 'endmenu' >> kernel/oplus_cpu/Kconfig
-            echo "Created stub kernel/oplus_cpu/Kconfig"
-          fi
-          echo "=== Find and fix other missing Kconfig sources ==="
-          grep -rn 'source "kernel/oplus' init/Kconfig arch/arm64/Kconfig 2>/dev/null | head -20
+          cat > kernel/oplus_cpu/Kconfig << 'KCFG'
+config OPLUS_FEATURE_CPU
+    bool "OPLUS CPU Features"
+    default y
+
+menu "OPLUS CPU Configuration"
+endmenu
+KCFG
+          echo "Created stub kernel/oplus_cpu/Kconfig"
+          echo "=== Find other missing Kconfig sources ==="
+          grep -rn 'source "kernel/oplus' init/Kconfig 2>/dev/null | head -20
           echo "=== Try defconfig ==="
-          make ARCH=arm64 defconfig 2>&1 | tail -10
+          make ARCH=arm64 defconfig 2>&1 | tail -15
+          echo "EXIT: $?"
           echo "=== Check .config ==="
           head -5 .config 2>/dev/null || echo "No .config"
-          echo "=== Try Image target ==="
-          make ARCH=arm64 help 2>&1 | grep -i "image" | head -10
+          echo "=== Image target check ==="
+          make ARCH=arm64 help 2>&1 | grep -iE "image|vmlinux" | head -10
+          exit 0
 
       - name: Configure Kernel
         run: |
@@ -113,6 +117,8 @@ jobs:
           export ARCH=arm64 CC=clang CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          rm -rf kernel/oplus_cpu && mkdir -p kernel/oplus_cpu
+          printf 'config OPLUS_FEATURE_CPU\n    bool "OPLUS CPU Features"\n    default y\n\nmenu "OPLUS CPU Configuration"\nendmenu\n' > kernel/oplus_cpu/Kconfig
           echo "=== Base defconfig ==="
           if [ -f arch/arm64/configs/gki_defconfig ]; then
             cp arch/arm64/configs/gki_defconfig .config
