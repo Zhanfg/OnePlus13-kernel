@@ -41,9 +41,22 @@ jobs:
           mkdir -p kernel/oplus_cpu
           printf 'config OPLUS_FEATURE_CPU\n    bool "OPLUS CPU"\n    default y\n' > kernel/oplus_cpu/Kconfig
 
-          # Configure
+          # Copy base defconfig
           cp arch/arm64/configs/gki_defconfig .config
-          make ARCH=arm64 CC=clang olddefconfig 2>&1 | tail -5
+
+          # Auto-fix ALL missing Kconfig sources (submodules not populated)
+          for i in $(seq 1 30); do
+            ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1)
+            echo "$ERR" | tail -3
+            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
+            if [ -z "$MISSING" ]; then
+              echo "olddefconfig OK after $i iterations"
+              break
+            fi
+            echo "Creating stub: $MISSING"
+            mkdir -p "$(dirname "$MISSING")"
+            echo "# stub Kconfig" > "$MISSING"
+          done
 
           # Merge vendor configs
           if [ -f arch/arm64/configs/vendor/sun_oplus_common.config ]; then
