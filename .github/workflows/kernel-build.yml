@@ -87,16 +87,25 @@ jobs:
       - name: Debug Makefile
         run: |
           cd kernel_source
-          echo "=== make version ==="
-          make --version | head -2
-          echo "=== make help (first 30 lines) ==="
-          make help 2>&1 | head -30
-          echo "=== Check key files ==="
-          ls -la Makefile scripts/Makefile scripts/kconfig/Makefile arch/arm64/Makefile 2>&1
+          echo "=== Fix missing oplus_cpu Kconfig ==="
+          mkdir -p kernel/oplus_cpu
+          if [ ! -f kernel/oplus_cpu/Kconfig ]; then
+            echo 'config OPLUS_FEATURE_CPU' > kernel/oplus_cpu/Kconfig
+            echo '    bool "OPLUS CPU Features"' >> kernel/oplus_cpu/Kconfig
+            echo '    default y' >> kernel/oplus_cpu/Kconfig
+            echo "" >> kernel/oplus_cpu/Kconfig
+            echo 'menu "OPLUS CPU Configuration"' >> kernel/oplus_cpu/Kconfig
+            echo 'endmenu' >> kernel/oplus_cpu/Kconfig
+            echo "Created stub kernel/oplus_cpu/Kconfig"
+          fi
+          echo "=== Find and fix other missing Kconfig sources ==="
+          grep -rn 'source "kernel/oplus' init/Kconfig arch/arm64/Kconfig 2>/dev/null | head -20
           echo "=== Try defconfig ==="
           make ARCH=arm64 defconfig 2>&1 | tail -10
           echo "=== Check .config ==="
           head -5 .config 2>/dev/null || echo "No .config"
+          echo "=== Try Image target ==="
+          make ARCH=arm64 help 2>&1 | grep -i "image" | head -10
 
       - name: Configure Kernel
         run: |
