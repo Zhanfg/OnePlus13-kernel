@@ -44,18 +44,43 @@ jobs:
           # Copy base defconfig
           cp arch/arm64/configs/gki_defconfig .config
 
-          # Auto-fix ALL missing Kconfig sources (submodules not populated)
+          # Pre-scan ALL Kconfig source references and create stubs for missing files
           set +e
+          grep -rn '^source "' --include="Kconfig*" . 2>/dev/null | \
+            sed 's/.*source "//; s/".*//' | sort -u | while read -r kf; do
+            if [ -n "$kf" ] && [ ! -f "$kf" ]; then
+              rm -rf "$(dirname "$kf")" 2>/dev/null
+              mkdir -p "$(dirname "$kf")"
+              echo "# stub Kconfig" > "$kf"
+              echo "Created stub: $kf"
+            fi
+          done
+
+          # Also fix any remaining via olddefconfig loop
           for i in $(seq 1 30); do
             ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1)
-            echo "$ERR" | tail -3
             MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
             if [ -z "$MISSING" ]; then
               echo "olddefconfig OK after $i iterations"
               break
             fi
             echo "Creating stub: $MISSING"
-            mkdir -p "$(dirname "$MISSING")" 2>/dev/null || { rm -rf "$(dirname "$MISSING")"; mkdir -p "$(dirname "$MISSING")"; }
+            rm -rf "$(dirname "$MISSING")" 2>/dev/null
+            mkdir -p "$(dirname "$MISSING")"
+            echo "# stub Kconfig" > "$MISSING"
+          done
+
+          # Also fix syncconfig errors
+          for i in $(seq 1 30); do
+            ERR=$(make ARCH=arm64 CC=clang syncconfig 2>&1)
+            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
+            if [ -z "$MISSING" ]; then
+              echo "syncconfig OK after $i iterations"
+              break
+            fi
+            echo "Creating stub (syncconfig): $MISSING"
+            rm -rf "$(dirname "$MISSING")" 2>/dev/null
+            mkdir -p "$(dirname "$MISSING")"
             echo "# stub Kconfig" > "$MISSING"
           done
           set -e
