@@ -37,23 +37,19 @@ jobs:
           export ARCH=arm64 CC=clang CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          # 1. Fix missing oplus_cpu Kconfig
-          rm -rf kernel/oplus_cpu
-          mkdir -p kernel/oplus_cpu
-          printf 'config OPLUS_FEATURE_CPU\n    bool "OPLUS CPU"\n    default y\n' > kernel/oplus_cpu/Kconfig
+          # 1. Remove ALL gitlink files (mode 160000 = uninitialized submodules)
+          echo "=== Removing gitlink files ==="
+          git ls-files --stage | grep '^160000' | awk '{print $4}' | while read -r gl; do
+            echo "  Removing gitlink: $gl"
+            rm -f "$gl"
+          done
 
-          # 2. Pre-scan ALL Kconfig source references and create stubs for missing files
+          # 2. Pre-scan ALL Kconfig source references and create stubs
           echo "=== Pre-scanning Kconfig sources ==="
-          grep -rn 'source "' --include="Kconfig*" . 2>/dev/null | \
+          grep -rh 'source "' --include="Kconfig*" . 2>/dev/null | \
             sed 's/.*source "//; s/".*//' | sort -u | while read -r kf; do
             if [ -n "$kf" ] && [ ! -f "$kf" ]; then
-              # Walk up to find and remove gitlink files blocking mkdir
-              dir="$(dirname "$kf")"
-              while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
-                if [ -f "$dir" ]; then rm -rf "$dir"; break; fi
-                dir=$(dirname "$dir")
-              done
-              mkdir -p "$(dirname "$kf")"
+              mkdir -p "$(dirname "$kf")" 2>/dev/null
               echo "# stub Kconfig" > "$kf" 2>/dev/null && echo "  Stub: $kf"
             fi
           done
@@ -73,23 +69,25 @@ jobs:
             else echo "$cfg" >> .config; fi
           done
 
-          # 5. Auto-fix loop: resolve ALL missing Kconfig via olddefconfig + syncconfig
+          # 5. Auto-fix loop: resolve remaining missing Kconfig
           echo "=== Resolving Kconfig ==="
-          for i in $(seq 1 50); do
-            ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1; make ARCH=arm64 CC=clang syncconfig 2>&1)
-            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed "s/.*can.t open file \"//; s/\".*//")
+          for i in $(seq 1 30); do
+            ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1)
+            MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed 's/.*can.t open file "//; s/".*//')
             if [ -z "$MISSING" ]; then
               echo "  Kconfig resolved after $i iterations"
               break
             fi
             echo "  Fixing: $MISSING"
-            dir="$(dirname "$MISSING")"
-            while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
-              if [ -f "$dir" ]; then rm -rf "$dir"; break; fi
-              dir=$(dirname "$dir")
+            parent="$(dirname "$MISSING")"
+            # Remove any file blocking the path
+            check="$parent"
+            while [ "$check" != "." ] && [ "$check" != "/" ]; do
+              if [ -f "$check" ] || [ -L "$check" ]; then rm -f "$check"; fi
+              check=$(dirname "$check")
             done
-            mkdir -p "$(dirname "$MISSING")"
-            echo "# stub Kconfig" > "$MISSING"
+            mkdir -p "$parent" 2>/dev/null
+            echo "# stub Kconfig" > "$MISSING" 2>/dev/null
           done
 
           # 6. Build kernel
