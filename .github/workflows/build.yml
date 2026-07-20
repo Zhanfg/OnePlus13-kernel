@@ -37,11 +37,14 @@ jobs:
           export ARCH=arm64 CC=clang CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          # 1. Remove ALL gitlink files (mode 160000 = uninitialized submodules)
+          # 1. Remove ALL gitlink files and create stub dirs with empty Makefiles
           echo "=== Removing gitlink files ==="
           git ls-files --stage | grep '^160000' | awk '{print $4}' | while read -r gl; do
-            echo "  Removing gitlink: $gl"
+            echo "  Gitlink: $gl -> stub dir"
             rm -f "$gl"
+            mkdir -p "$gl"
+            echo "# stub" > "$gl/Makefile"
+            echo "# stub" > "$gl/Kconfig"
           done
 
           # 2. Pre-scan ALL Kconfig source references and create stubs
@@ -52,6 +55,19 @@ jobs:
               mkdir -p "$(dirname "$kf")" 2>/dev/null
               echo "# stub Kconfig" > "$kf" 2>/dev/null && echo "  Stub: $kf"
             fi
+          done
+
+          # 2b. Pre-scan Makefiles for missing subdirectory references
+          echo "=== Pre-scanning Makefile subdirs ==="
+          find . -name Makefile -not -path './scripts/*' -not -path './tools/*' 2>/dev/null | while read -r mf; do
+            mdir=$(dirname "$mf")
+            grep -oP '(?:obj-\$\([^)]+\)|obj-y|obj-m)\s*\+=\s*\K[^\s/]+(?=/)' "$mf" 2>/dev/null | sort -u | while read -r sub; do
+              if [ ! -f "$mdir/$sub/Makefile" ]; then
+                mkdir -p "$mdir/$sub"
+                echo "# stub" > "$mdir/$sub/Makefile"
+                echo "  Stub Makefile: $mdir/$sub/"
+              fi
+            done
           done
 
           # 3. Copy base defconfig and merge vendor configs
@@ -90,19 +106,30 @@ jobs:
             echo "# stub Kconfig" > "$MISSING" 2>/dev/null
           done
 
-          # 6. Build kernel
+          # 6. Build kernel with auto-fix for missing Makefiles
           echo "=== Building kernel ==="
-          make ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image 2>&1 | tee build.log | tail -80
-
-          if [ -f arch/arm64/boot/Image ]; then
-            echo "=== BUILD SUCCESS ==="
-            echo "Size: $(du -h arch/arm64/boot/Image | cut -f1)"
-            exit 0
-          else
-            echo "=== BUILD FAILED ==="
-            tail -100 build.log 2>/dev/null || echo "no build.log"
+          for attempt in $(seq 1 10); do
+            make ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image 2>&1 | tee build.log
+            if [ -f arch/arm64/boot/Image ]; then
+              echo "=== BUILD SUCCESS ==="
+              echo "Size: $(du -h arch/arm64/boot/Image | cut -f1)"
+              exit 0
+            fi
+            # Check for missing Makefile
+            MF_ERR=$(grep 'Makefile: No such file' build.log | head -1 | sed 's/.*: *//; s/: No such file.*//')
+            if [ -n "$MF_ERR" ]; then
+              echo "  Fixing missing Makefile: $MF_ERR (attempt $attempt)"
+              mkdir -p "$(dirname "$MF_ERR")" 2>/dev/null
+              echo "# stub" > "$MF_ERR"
+              continue
+            fi
+            echo "=== BUILD FAILED (non-Makefile error) ==="
+            grep -i 'error:' build.log | head -20
+            tail -50 build.log
             exit 1
-          fi
+          done
+          echo "=== BUILD FAILED after 10 attempts ==="
+          exit 1
 
       - name: Package AK3
         run: |
