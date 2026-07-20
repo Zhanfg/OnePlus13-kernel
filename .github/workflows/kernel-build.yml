@@ -90,7 +90,20 @@ jobs:
           export ARCH=arm64 CC=clang CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-          make O=out ARCH=arm64 CC=clang gki_defconfig 2>&1 | tail -3
+          mkdir -p out
+          echo "=== Base defconfig ==="
+          if [ -f arch/arm64/configs/gki_defconfig ]; then
+            cp arch/arm64/configs/gki_defconfig out/.config
+            echo "Using gki_defconfig as base"
+          elif [ -f arch/arm64/configs/oplus_debug_defconfig ]; then
+            cp arch/arm64/configs/oplus_debug_defconfig out/.config
+            echo "Using oplus_debug_defconfig as base"
+          else
+            cp arch/arm64/configs/defconfig out/.config
+            echo "Using defconfig as base"
+          fi
+          make O=out ARCH=arm64 CC=clang olddefconfig 2>&1 | tail -5
+          echo "=== Merge vendor sun configs ==="
           if [ -f arch/arm64/configs/vendor/sun_oplus_common.config ]; then
             ./scripts/kconfig/merge_config.sh -m -O out out/.config arch/arm64/configs/vendor/sun_oplus_common.config 2>&1 | tail -3
           fi
