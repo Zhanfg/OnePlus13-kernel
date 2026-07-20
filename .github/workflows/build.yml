@@ -45,6 +45,7 @@ jobs:
           cp arch/arm64/configs/gki_defconfig .config
 
           # Auto-fix ALL missing Kconfig sources (submodules not populated)
+          set +e
           for i in $(seq 1 30); do
             ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1)
             echo "$ERR" | tail -3
@@ -57,6 +58,7 @@ jobs:
             mkdir -p "$(dirname "$MISSING")"
             echo "# stub Kconfig" > "$MISSING"
           done
+          set -e
 
           # Merge vendor configs
           if [ -f arch/arm64/configs/vendor/sun_oplus_common.config ]; then
