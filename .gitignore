@@ -47,3 +47,6 @@ build_*.log
 .env
 *.pem
 *.key
+# Large boot/recovery images (>50MB - exceed GitHub limit)
+releases/restore/*.img
+releases/restore/*.zip
