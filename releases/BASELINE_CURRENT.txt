@@ -13,5 +13,13 @@ STATUS=
   ❌ G: Root/功能待后续
 BUILD_CMD=./kernel_platform/oplus/build/oplus_build_kernel.sh sun perf
 PRODUCT=v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
-NEXT=阶段 F: 真机刷入验证能否开机
-UPDATED=2026-07-23
+NEXT=
+  - 基带问题根因: vendor_boot.img 未一起刷（vermagic 不匹配）
+  - abogki tag 已在本地创建，但构建系统增量缓存损坏，重建困难
+  - 可行方案: 用现有产物 Image + vendor_boot.img 打包同一个 AK3
+  - 重建需要修复 OKI 构建系统（Bazel 缓存 + 缺失的源码文件）
+BUILD_STATUS=
+  - 第一次 OKI 构建产物: $OKI/out/dist/Image + vendor_boot.img ✅
+  - 重建尝试: 失败（Bazel 增量缓存损坏）
+  - abogki tag: 已本地创建 common + msm-kernel
+UPDATED=2026-07-24
