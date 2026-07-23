@@ -3,7 +3,15 @@ DEVICE=PJZ110_16.0.9.401(CN01) sun SM8750
 DISK=C不动 D~36GB空 E~199GB空
 WORKSPACE=/home/axymorrsen/op13-oki (WSL ext4 on E:\WSL\Ubuntu)
 MANIFEST=oneplus/sm8750 + oneplus_13_b.xml
-STATUS=repo sync 进行中(~4GB+), index-pack 活跃; 废弃NTFS /mnt/e/op13-oki 已删除
+STATUS=
+  ✅ A1-A5: 环境准备完成（repo 安装、磁盘策略）
+  ✅ B1-B4: repo init + sync 完成（~11GB，common tip: e1b346b6b）
+  ✅ C1-C3: oplus_build_kernel.sh sun perf 构建成功
+  ✅ D1: 静态验收通过（Android clang r510928, 6.6.118-android15-8-...-4k, ~36MB）
+  ✅ E1-E3: AK3 已打包 → releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
+  ❌ F: 真机刷入待验证
+  ❌ G: Root/功能待后续
 BUILD_CMD=./kernel_platform/oplus/build/oplus_build_kernel.sh sun perf
-NEXT=sync完成后做 B3 检查再 C sun perf
-UPDATED=2026-07-21
+PRODUCT=v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
+NEXT=阶段 F: 真机刷入验证能否开机
+UPDATED=2026-07-23
