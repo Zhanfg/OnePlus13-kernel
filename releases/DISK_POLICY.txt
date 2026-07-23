@@ -1,0 +1,22 @@
+磁盘策略（用户要求 2026-07-21）
+================================
+C: 不要动（不写大文件、不清理系统/装巨型工具到 C）
+D: 空闲至少 30 GB（项目文档、scripts、restore 救砖、小体积 releases）
+E: 空闲至少 50 GB（OKI repo sync、编译 out、参考 ROM/zip）
+
+当前工作区:
+  OKI 源码/编译: WSL 原生 ext4 = /home/axymorrsen/op13-oki
+    （底层 VHDX 在 E:\WSL\Ubuntu\ext4.vhdx，不占 C 系统盘）
+  工程文档/releases: D:\OnePlus13-kernel
+  旧 NTFS 半成品: /mnt/e/op13-oki（~27G，sync 卡住后废弃，稍后删除以腾 E 空间）
+
+说明:
+  - 勿在 /mnt/e 或 /mnt/d 上直接 repo sync（NTFS 上 git checkout 易假死）
+  - 大文件走 E 系存储（WSL VHDX 或 E: 显式路径），C 不动
+
+已清理（约）:
+  - WSL /home/.../op13-kernel 下 src、brokestar、旧 zip/stage/logs（~6GB+）
+  - D:\releases 失败包 M1-M4、_archive_old、_debug
+  - stock zip 在 op13-oki/ref
+  - D/E 回收站清空
+  - 未触碰 C:

@@ -1,0 +1,22 @@
+破星全阶段产物（编译机已完成，待真机验证）
+==========================================
+日期: 2026-07-21T00:41:57+08:00
+源码: fork Zhanfg/android_kernel_common_oneplus_sm8750 @ 6.6-final + 本地集成
+工具链: Ubuntu clang 21 + LLD
+
+建议刷机顺序（明早）:
+1) M1 VANILLA — 只验证 6.6.126 能否开机
+   v6.6.126-OnePlus13-sun-AK3-BROKESTAR-M1-VANILLA-20260721-0003.zip
+2) M2 RESUKISU — 验证 Root/Manager
+   v6.6.126-OnePlus13-sun-AK3-BROKESTAR-M2-RESUKISU-20260721-0020.zip
+3) M3 FULL — 全功能
+   v6.6.126-OnePlus13-sun-AK3-BROKESTAR-M3-FULL-20260721-0038.zip
+
+任一步失败: fastboot flash boot releases/restore/boot.img
+不要再刷 v6.6.89 旧包。
+
+说明:
+- M1: 干净破星（BORE/HMBIRD）
+- M2: + ReSukiSU + SuSFS
+- M3: + BBG(CONFIG_LSM) + Re:Kernel + 默认 BBR+FQ + IP_SET/CAKE 等
+- 树内无独立 BBR3 源码，故默认 BBR（非 cubic）

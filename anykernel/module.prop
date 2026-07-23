@@ -1,6 +1,0 @@
-id=kernel_custom
-name=一加13 自定义内核策略
-version=v1.0.0
-versionCode=1
-author=sun-custom-kernel
-description=一加13 (sun/SM8750) 自定义内核默认策略应用模块。由 AnyKernel3 刷写时根据音量键选择动态生成。包含调度、TCP、qdisc、ZRAM、BBG 等默认策略。

@@ -1,0 +1,9 @@
+ACTIVE_STRATEGY=真 OKI 官方构建路径
+DEVICE=PJZ110_16.0.9.401(CN01) sun SM8750
+DISK=C不动 D~36GB空 E~199GB空
+WORKSPACE=/home/axymorrsen/op13-oki (WSL ext4 on E:\WSL\Ubuntu)
+MANIFEST=oneplus/sm8750 + oneplus_13_b.xml
+STATUS=repo sync 进行中(~4GB+), index-pack 活跃; 废弃NTFS /mnt/e/op13-oki 已删除
+BUILD_CMD=./kernel_platform/oplus/build/oplus_build_kernel.sh sun perf
+NEXT=sync完成后做 B3 检查再 C sun perf
+UPDATED=2026-07-21

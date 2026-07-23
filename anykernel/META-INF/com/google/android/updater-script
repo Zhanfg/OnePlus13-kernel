@@ -1,6 +1,0 @@
-# AnyKernel3 updater-script
-# 一加13 (sun/SM8750) 自定义内核
-# 此文件由 update-binary 处理, 这里保留占位
-
-show_progress(0.500000, 0);
-show_progress(1.000000, 0);
