@@ -1,532 +1,216 @@
-# 一加 13 (sun / SM8750) 自定义内核
+# OnePlus 13（sun / SM8750）自定义内核工程
 
-> 基于 **官方 OnePlusOSS OOS SM8750 内核树**，为 **一加 13（sun）+ ColorOS 16 国行** 构建的自定义内核。
-> 产物：**仅 AnyKernel3 (AK3) zip**，通过 GitHub Actions 可复现构建。
+面向 **OnePlus 13 国行 PJZ110（设备代号 `sun`）/ ColorOS 16** 的内核构建、补丁集成、AnyKernel3 打包与验证工程。
 
----
+> 当前状态：**Experimental**。完整 OnePlus OKI 源码已经能够完成官方路径构建并生成 6.6.118 内核产物，但尚未完成稳定的真机启动与运行时验收。仓库中的任何 ZIP、Image 或实验性 CI 产物都不能直接视为 Stable。
 
-## 目录
+## 项目边界
 
-- [项目简介](#项目简介)
-- [功能特性](#功能特性)
-- [项目结构](#项目结构)
-- [环境要求](#环境要求)
-- [快速开始](#快速开始)
-- [本地构建](#本地构建)
-- [GitHub Actions 构建](#github-actions-构建)
-- [刷写方法](#刷写方法)
-- [AK3 交互菜单说明](#ak3-交互菜单说明)
-- [验收检查](#验收检查)
-- [配置说明](#配置说明)
-- [常见问题 (FAQ)](#常见问题-faq)
-- [注意事项](#注意事项)
-- [技术规格对照](#技术规格对照)
+本仓库不是完整 Linux 内核源码镜像，而是项目控制仓库，负责：
 
----
+- 完整 OnePlus OKI 源码同步说明与构建入口
+- 自定义补丁、配置和策略的组织
+- AnyKernel3 打包与刷写逻辑
+- 静态测试、真机验收脚本和发布记录
+- 官方上游版本、提交 SHA 与本地基线追踪
 
-## 项目简介
+相关仓库：
 
-本项目在官方 OnePlusOSS OOS SM8750 内核树上，为一加 13（sun）+ ColorOS 16 国行构建带完整功能与默认策略的自定义内核，产出可刷写的 AK3 zip。
+| 角色 | 仓库 | 默认分支 | 说明 |
+|---|---|---|---|
+| 项目控制仓库 | [`Zhanfg/OnePlus13-kernel`](https://github.com/Zhanfg/OnePlus13-kernel) | `main` | 构建、补丁、AK3、测试和文档 |
+| 自定义 common 源码镜像 | [`Zhanfg/android_kernel_common_oneplus_sm8750`](https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750) | `6.6-final` | 自定义 common 内核补丁承载；不等于完整 OKI 工程 |
+| 官方 OKI manifest | [`OnePlusOSS/kernel_manifest`](https://github.com/OnePlusOSS/kernel_manifest) | `oneplus/sm8750` | 完整工程清单，使用 `oneplus_13_b.xml` |
+| 官方 common | [`OnePlusOSS/android_kernel_common_oneplus_sm8750`](https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750) | `oneplus/sm8750_b_16.0.0_oneplus_13` | Android 15 / Linux 6.6 common 树 |
+| 官方 msm-kernel | [`OnePlusOSS/android_kernel_oneplus_sm8750`](https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750) | `oneplus/sm8750_b_16.0.0_oneplus_13` | OnePlus / Qualcomm 平台内核树 |
+| 官方模块与设备树 | [`OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750`](https://github.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750) | `oneplus/sm8750_b_16.0.0_oneplus_13` | vendor modules、设备树及完整 OKI 所需组件 |
 
-### 核心原则
+## 当前官方上游
 
-- **保留官方行为**：充电、蜂窝信号、指纹、相机、完整音频通路
-- **不修改基带镜像**
-- **不把杜比解码器编进内核**（由用户自行安装用户态 KSU 模块）
-- **默认策略**：wait 调度 + bbr3 + fq + lz4 + BBG 默认开
+最后核对：**2026-07-29**。
 
----
+| 项目 | 当前值 |
+|---|---|
+| 设备版本 | `PJZ110_16.0.9.401(CN01)` |
+| Manifest 分支 | `oneplus/sm8750` |
+| Manifest 文件 | `oneplus_13_b.xml` |
+| common 分支 | `oneplus/sm8750_b_16.0.0_oneplus_13` |
+| common 提交 | `e1b346b6b4f4096eb342ae3684838a942fd6f6c4` |
+| msm-kernel 分支 | `oneplus/sm8750_b_16.0.0_oneplus_13` |
+| msm-kernel 提交 | `6028f47faddaa27700f8dd3a1d83906ea8f27170` |
+| 当前内核版本 | Linux `6.6.118` / Android 15 GKI 基线 |
 
-## 功能特性
+更完整的同步规则、链接与检查方法见 [`docs/UPSTREAM.md`](docs/UPSTREAM.md)。
 
-### Root / 隐藏 / 挂载 / KPM
+## 当前真实状态
 
-| 功能 | 说明 |
-|------|------|
-| ReSukiSU | 主 Root 方案，多管理器兼容 |
-| SuSFS v2.2.0 | 全功能：SUS_PATH/MOUNT/KSTAT/MAP、OPEN_REDIRECT、AVC spoof、uname/cmdline spoof |
-| KALLSYMS(+ALL) | 始终启用，便于 KPatch-Next 模块加载 `.kpm` |
-| KPM | 刷写时可选（音量键），默认不应用 |
-| hy / Mountify | OVERLAY_FS + TMPFS_XATTR + TMPFS_POSIX_ACL |
+| 阶段 | 状态 | 说明 |
+|---|---|---|
+| 完整 OKI `repo sync` | 已完成 | 使用 `oneplus/sm8750` 和 `oneplus_13_b.xml` |
+| 官方构建脚本 | 已完成 | `oplus_build_kernel.sh sun perf` 可生成产物 |
+| 静态检查 | 已完成 | 已确认 Android Clang 与 6.6.118 Image |
+| AK3 打包 | 已完成 | 已生成测试包，不能视为稳定发布 |
+| 真机启动 | 待验证 | 未完成前不得标记 Boot Verified |
+| 蜂窝、Wi-Fi、相机、指纹、充电、休眠 | 待验证 | 需要同一系统与 vendor 基线 |
+| Root、SuSFS、调度、网络等自定义功能 | 待验证 | 必须在稳定启动后逐项启用和回归 |
 
-### 调度
+## 正确构建路径
 
-| 功能 | 说明 |
-|------|------|
-| **默认 wait** | 优化后的 wait，开机默认 |
-| HMBIRD / 风驰 | 合入 Numbersf/WildKernels 全量补丁（非官方，非空壳），可选启用 |
-| SCX | 编入，与 HMBIRD 共存，可回退 wait |
+### 1. 同步完整 OnePlus OKI 工程
 
-### I/O / 存储 / ZRAM
+不要只克隆单个 `android_kernel_oneplus_sm8750` 仓库。完整构建至少需要 common、msm-kernel、modules/devicetree、构建工具与 manifest 中固定的依赖。
 
-| 功能 | 说明 |
-|------|------|
-| ADIOS | I/O 调度器（可选） |
-| F2FS 微优化 | 不加重「必须清 data 才能开机」类问题 |
-| ZRAM 全栈 | LZ4 1.10.0、ZSTD 1.5.7、LZ4KD、Multi-Comp、Writeback；**默认 lz4** |
+```bash
+mkdir -p op13-oki
+cd op13-oki
 
-### 网络（完整栈）
+repo init \
+  -u https://github.com/OnePlusOSS/kernel_manifest.git \
+  -b oneplus/sm8750 \
+  -m oneplus_13_b.xml
 
-| 功能 | 说明 |
-|------|------|
-| **BBRv3** | 默认拥塞控制（bbr3，非仅 bbr） |
-| **fq** | 默认 qdisc |
-| cake / fq_codel | 可用 |
-| IP_SET | 完整可用 |
-| TPROXY / REDIRECT / NAT | IPv4/IPv6 路由、隐私扩展、TTL/HL |
-| WireGuard | 内核接口可建、可跑流量 |
+repo sync -c --force-sync --no-clone-bundle --no-tags -j"$(nproc)"
+```
 
-### 通信 / 安全
+同步完成后保存可复现 manifest：
 
-| 功能 | 说明 |
-|------|------|
-| **Baseband Guard (BBG)** | 默认开启，运行时可关闭，不改基带镜像 |
-| WiFi 6GHz | 协议栈兼容；区域解锁用模块 |
+```bash
+repo manifest -r -o manifest-pinned.xml
+```
 
-### 省电
+`manifest-pinned.xml` 应随构建记录保存，但提交前需要检查其中是否包含本机路径、账号或其他隐私信息。
 
-| 功能 | 说明 |
-|------|------|
-| Re:Kernel | 内核侧完整；配合用户态 NoActive/Freezer |
-| Wakelock Blocker | 补丁完整合入 |
-| 省电小补丁 | reduce_freeze_timeout、avoid_extra_s2idle、minimise_wakeup_time 等 |
+### 2. 使用官方 OnePlus 构建入口
 
-### 容器 / 兼容
+```bash
+./kernel_platform/oplus/build/oplus_build_kernel.sh sun perf
+```
 
-| 功能 | 说明 |
-|------|------|
-| Droidspaces | PID_NS、IPC_NS、SYSVIPC、POSIX_MQUEUE 真实启用 |
-| NTSYNC | `/dev/ntsync` |
-| Unicode Bypass | 完整补丁 |
-| XUS Error Fix | 完整补丁 |
+仓库中的 [`scripts/wsl_build_oki.sh`](scripts/wsl_build_oki.sh) 用于辅助 WSL / Linux 环境下的同步、构建、验证与打包。以脚本实际参数和 `--help` 输出为准。
 
-### 编译优化
+### 3. 保存构建证据
 
-| 功能 | 说明 |
-|------|------|
-| LTO Thin + O2 | 固定编译策略 |
-| Oryon 优化 | `-mcpu=oryon-1`（工具链支持时） |
-| LRNG | Linux Random Number Generator |
+每次可发布构建至少记录：
 
-### 明确不包含
+- Manifest 仓库、分支和固定 revision 文件
+- common、msm-kernel、modules/devicetree 的提交 SHA
+- Android Clang / Bazel / Kleaf 版本
+- 构建命令与目标 `sun perf`
+- Image、vendor_boot 相关产物及 SHA256
+- 应用的自定义补丁清单
+- 设备、系统版本、固件版本和验证等级
 
-- 杜比解码器 / 杜比音效 blob（用户态 KSU 模块）
-- SuSFS 用户态模块（不进 AK3）
-- KPatch-Next 模块本体（不进 AK3）
-- 解容 / 激进充电曲线
-- 强改最高亮度 / Improved Haptics
-- 内核强解 WiFi 国家码
+## 实验性 GitHub Actions
+
+`.github/workflows/build.yml` 当前是**单仓库实验性构建**：它只克隆 `android_kernel_oneplus_sm8750`，并通过创建空 Kconfig / Makefile stub 绕过缺失组件。
+
+该工作流：
+
+- 不等价于完整 OnePlus OKI 构建
+- 不保证 vendor modules、设备树、ABI 与设备当前系统匹配
+- 只能用于语法、配置或早期实验
+- 产物不得直接标记为可刷写稳定版
+
+完整构建应以 manifest + 官方构建脚本为主。CI 在完成完整 manifest 同步、固定 revision、禁止 stub 绕过和真机验证前，不作为推荐发布路径。
+
+## 旧版脚本
+
+以下内容来自早期“单仓库 + 逐项补丁”设计：
+
+- `build.sh`
+- `scripts/patch.sh`
+- `configs/base_defconfig_fragment`
+
+这些文件仍可用于研究补丁来源和配置，但与完整 OKI 路径存在结构差异。除非后续重构完成，否则不要将其作为正式发布入口。
+
+## 计划集成的功能
+
+下表表示项目目标或源码中已有相关实现，不代表已完成真机验证。
+
+| 类别 | 目标 |
+|---|---|
+| Root / 隐藏 | ReSukiSU、SuSFS、KPM 兼容路径 |
+| 调度 | 默认 wait；HMBIRD / 风驰、SCX 作为可选路径 |
+| I/O / ZRAM | ADIOS、LZ4/LZ4KD/ZSTD、多压缩与 writeback |
+| 网络 | BBRv3、fq、fq_codel、cake、IP_SET、TPROXY、WireGuard |
+| 通信安全 | Baseband Guard；不修改基带固件 |
+| 省电 | Re:Kernel、Wakelock Blocker 与小型休眠优化 |
+| 兼容 | Droidspaces、NTSYNC、OverlayFS、TMPFS xattr/ACL |
+| 编译 | ThinLTO、O2、工具链支持时的 Oryon 优化 |
+
+明确不包含：
+
+- 杜比解码器、杜比音效 blob 或其他受许可限制的用户态文件
 - 基带固件修改
+- 未验证的激进充电、温控、亮度或电压修改
+- 未经来源与许可证核对的闭源二进制
 
----
+## 刷写与回滚
 
-## 项目结构
+在完成 Boot Verified 之前，只允许在具备完整救砖条件的测试设备上进行。
 
-```
+刷写前至少准备：
+
+1. 与当前系统版本一致的原版 `boot.img`、`vendor_boot.img` 和必要回退资料。
+2. 可用的 Fastboot / Fastbootd、Recovery 或其他恢复路径。
+3. 当前数据备份。
+4. 与构建相同的系统、固件和 vendor modules 基线。
+5. 构建产物 SHA256 与来源记录。
+
+不要把裸 `Image` 当作完整 `boot.img` 直接写入 boot 分区。Image、ramdisk、DTB/DTBO、vendor modules 与 vendor_boot 必须保持同一构建和 ABI 基线。
+
+## 验证等级
+
+| 等级 | 定义 |
+|---|---|
+| Experimental | 仅完成编译、静态检查或打包 |
+| Boot Verified | 指定 PJZ110 / ColorOS 版本可以重复启动，并确认可回退 |
+| Runtime Verified | 蜂窝、Wi-Fi、蓝牙、相机、指纹、充电、休眠、Root 等完成测试 |
+| Stable | 在 Runtime Verified 基础上完成重复刷写、重启、待机和基础回归 |
+
+构建成功不能自动升级为 Boot Verified 或 Stable。
+
+## 目录说明
+
+```text
 OnePlus13-kernel/
-├── build.sh                          # 内核构建主脚本
-├── .gitignore
-├── README.md                         # 本文档
-│
-├── configs/                          # 内核配置
-│   ├── base_defconfig_fragment       # 基础 defconfig 碎片（所有 CONFIG 项）
-│   └── verify_config.sh              # CONFIG 验证脚本
-│
-├── scripts/                          # 辅助脚本
-│   └── patch.sh                      # 补丁管理（获取/合入/验证）
-│
-├── anykernel/                        # AnyKernel3 刷写包
-│   ├── anykernel.sh                  # AK3 主脚本（含7题交互菜单）
-│   ├── service.sh                    # 开机策略应用脚本
-│   ├── module.prop                    # 模块信息
-│   └── META-INF/com/google/android/
-│       ├── update-binary             # AK3 入口
-│       └── updater-script            # 占位脚本
-│
-├── .github/workflows/
-│   └── build.yml                     # GitHub Actions CI/CD 工作流
-│
-├── tests/                            # 测试
-│   ├── test_static.py                # 静态验收测试（Python）
-│   ├── test_policies.py              # 策略单元测试（Python unittest）
-│   └── verify_runtime.sh             # 运行时验收脚本（真机执行）
-│
-└── docs/                             # 文档目录
+├── .github/workflows/       # 自动化；当前构建工作流仍属实验性
+├── anykernel/               # AK3 模板与刷写脚本
+├── configs/                 # 早期配置碎片
+├── docs/                    # 对外工程文档、上游与状态说明
+├── releases/                # 基线、构建和回退记录；禁止保存本机隐私
+├── scripts/                 # OKI/WSL 构建、验证、打包及旧版补丁脚本
+├── tests/                   # 静态、策略与真机验收脚本
+├── build.sh                 # 早期单仓库构建入口
+└── README.md
 ```
 
----
+## 上游同步原则
 
-## 环境要求
+1. 先同步官方 manifest，再同步 manifest 指向的全部仓库。
+2. 每次同步保存固定 revision 的 manifest，不以浮动分支名称代替版本记录。
+3. 自定义 common 镜像只承载明确拆分的本地补丁，不替代完整 OKI 工程。
+4. 官方更新先进入独立 `sync/upstream-*` 分支或 PR，不直接覆盖自定义主分支。
+5. 冲突按功能组处理：设备/ABI → 构建 → Root/SuSFS → 调度 → 网络 → 省电与兼容。
+6. 不使用 `ours`、空 stub 或删除冲突代码来伪造同步成功。
+7. 每次上游更新后重新执行完整构建和真机验收。
 
-### 本地构建
+## 安全与隐私
 
-- **OS**: Ubuntu 22.04 / 24.04（或 WSL2）
-- **工具链**: Android Clang (r498229b 或更新) + GCC aarch64 交叉编译器
-- **依赖**: bc, bison, build-essential, ccache, flex, libelf-dev, libssl-dev, python3
-- **磁盘空间**: 约 30 GB（内核源码 + 编译输出）
-- **内存**: 建议 16 GB 以上
+- 不提交 Token、Cookie、密钥、账号、设备序列号或未脱敏日志。
+- 不提交本机绝对路径、磁盘布局、用户名或个人目录。
+- 公开仓库中的测试记录必须使用通用占位路径。
+- 发现真实密钥时应立即吊销；普通删除文件不能清除 Git 历史中的秘密。
+- 内核、启动、基带接口、充电、温控和文件系统改动必须单独说明风险与回退方式。
 
-### GitHub Actions 构建
+## 文档
 
-- 无需本地环境，直接在 GitHub Actions 上运行
-- 使用 `ubuntu-24.04` runner
-- 构建时间约 30-60 分钟
+- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)：当前工程状态与优先级
+- [`docs/UPSTREAM.md`](docs/UPSTREAM.md)：官方上游、版本锁定和同步流程
+- [`releases/BASELINE_CURRENT.txt`](releases/BASELINE_CURRENT.txt)：当前脱敏基线记录
 
----
+## 许可证与致谢
 
-## 快速开始
+Linux 内核源码遵循 GPL-2.0。各第三方补丁、脚本和工具遵循其各自许可证。
 
-### 方式一：GitHub Actions（推荐）
-
-1. Fork 本仓库到你的 GitHub 账号
-2. 进入仓库的 **Actions** 页面
-3. 选择 **Build OnePlus 13 Custom Kernel (AK3)** 工作流
-4. 点击 **Run workflow**
-5. 选择构建参数（变体、Oryon 优化、LTO 模式）
-6. 等待构建完成，下载 Artifacts 中的 AK3 zip
-
-### 方式二：本地构建
-
-```bash
-# 1. 克隆本项目
-git clone <your-repo-url>
-cd OnePlus13-kernel
-
-# 2. 安装依赖
-sudo apt-get update
-sudo apt-get install -y bc bison build-essential ccache cpio curl flex \
-  git libelf-dev libncurses-dev libssl-dev python3 zip zlib1g-dev
-
-# 3. 下载并合入补丁（会自动克隆官方内核树）
-chmod +x scripts/patch.sh build.sh
-./scripts/patch.sh fetch
-./scripts/patch.sh apply
-
-# 4. 配置工具链（设置环境变量）
-export CC=clang
-export CROSS_COMPILE=aarch64-linux-gnu-
-export ARCH=arm64
-
-# 5. 完整构建
-./build.sh all
-
-# 6. 产物
-ls *.zip *.sha256
-```
-
----
-
-## 本地构建
-
-### 分步执行
-
-```bash
-# 仅配置内核
-./build.sh config
-
-# 仅编译
-./build.sh compile
-
-# 仅打包 AK3
-./build.sh package
-
-# 清理输出
-./build.sh clean
-
-# 完整构建（config + compile + package）
-./build.sh all
-```
-
-### 补丁管理
-
-```bash
-# 下载所有补丁到 patches/cache/
-./scripts/patch.sh fetch
-
-# 按规格顺序合入补丁到 kernel_source/
-./scripts/patch.sh apply
-
-# 验证补丁完整性
-./scripts/patch.sh verify
-
-# 查看补丁状态
-./scripts/patch.sh summary
-```
-
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `KERNEL_DIR` | `./kernel_source` | 内核源码目录 |
-| `OUT_DIR` | `./out` | 输出目录 |
-| `ARCH` | `arm64` | 架构 |
-| `CC` | `clang` | Clang 路径 |
-| `CROSS_COMPILE` | `aarch64-linux-gnu-` | 交叉编译前缀 |
-| `JOBS` | `$(nproc)` | 编译线程数 |
-| `ORYON_CPU` | (空) | Oryon CPU 优化参数 |
-| `LTO` | `thin` | LTO 模式 |
-
----
-
-## GitHub Actions 构建
-
-### 触发方式
-
-- **手动触发**：Actions → Build OnePlus 13 Custom Kernel → Run workflow
-- **定时构建**：每周日凌晨 3 点 UTC 自动执行
-
-### 构建参数
-
-| 参数 | 选项 | 说明 |
-|------|------|------|
-| `build_variant` | stable / beta / experimental | 构建变体 |
-| `oryon_optimize` | true / false | Oryon CPU 优化 |
-| `lto_mode` | thin / full / none | LTO 模式 |
-
-### 产物
-
-- `OnePlus13-sun-custom-*.zip`：AK3 刷写包
-- `*.sha256`：SHA256 校验文件
-- `build_info.json`：构建信息（commit、分支、配置等）
-- `build.log`：完整构建日志
-
----
-
-## 刷写方法
-
-### 前置条件
-
-- 一加 13（sun / SM8750），ColorOS 16 国行
-- 已解锁 Bootloader
-- TWRP / OrangeFox 等自定义 Recovery
-- AK3 zip 文件
-
-### 刷写步骤
-
-1. 将 AK3 zip 传输到手机
-2. 重启进入 Recovery
-3. 选择 **Install** → 找到 AK3 zip
-4. **滑动刷写**，进入交互菜单
-5. 按音量键选择各选项（见下方说明）
-6. 等待刷写完成
-7. 重启设备
-
-### 回滚
-
-如刷写后无法开机：
-
-1. 重启进入 Recovery
-2. 使用刷写时创建的备份（`/data/kernel_backup_*/init_boot.img`）
-3. 刷回原版 init_boot
-4. 重启
-
----
-
-## AK3 交互菜单说明
-
-刷写时会显示 7 道选择题，使用**音量键**选择：
-
-| 按键 | 含义（全程固定） |
-|------|------------------|
-| **音量 +** | 选择第一项 / 推荐项 / 是 |
-| **音量 -** | 选择第二项 / 备选项 / 否 |
-| **超时未按键** | 使用规格默认并继续刷写 |
-
-### 各题说明
-
-| 题目 | 音量+（推荐） | 音量-（备选） |
-|------|---------------|---------------|
-| 【1/7】默认 CPU 调度 | wait（稳定） | 风驰/HMBIRD（性能向） |
-| 【2/7】默认 TCP | bbr3（规格默认） | cubic（传统） |
-| 【3/7】默认 qdisc | fq（搭配 bbr3） | fq_codel |
-| 【4/7】默认 ZRAM | lz4（更快） | zstd（更高压缩率） |
-| 【5/7】Baseband Guard | 开启（降低风险） | 关闭（排障用） |
-| 【6/7】KPM 补丁 | 不应用（用 KPatch-Next） | 应用（嵌入 Image） |
-| 【7/7】备份 init_boot | 备份（可回滚） | 跳过 |
-
-刷写完成后会显示选择汇总并记录到 `/data/ak3-choices.log`。
-
----
-
-## 验收检查
-
-### 静态测试（编译后）
-
-```bash
-# 验证项目结构、配置、AK3 完整性
-python3 tests/test_static.py
-
-# 策略单元测试
-python3 tests/test_policies.py
-```
-
-### 运行时验收（真机执行）
-
-将 `tests/verify_runtime.sh` 传到手机后执行：
-
-```bash
-# 需要 root
-su -c "sh verify_runtime.sh"
-```
-
-验收项目包括：
-
-| 功能 | 验收标准 |
-|------|----------|
-| ReSukiSU | `su -c id` 返回 uid=0 |
-| SuSFS v2.2.0 | 版本接口为 v2.2.0 |
-| KALLSYMS | `/proc/kallsyms` 符号数 > 1000 |
-| wait 默认 | 开机后调度路径为 wait |
-| HMBIRD/SCX | 全量补丁实装，非壳；可启用/回退 |
-| BBRv3 | `tcp_congestion_control=bbr3` |
-| fq | `default_qdisc=fq` |
-| ZRAM | 多算法可选，默认 lz4 |
-| IP_SET/WG | 对应命令可用 |
-| BBG | 默认生效，可关闭 |
-| Droidspaces | `unshare -p` 成功 |
-| NTSYNC | `/dev/ntsync` 存在 |
-| 官方行为 | 充电/信号/指纹/音频正常 |
-
----
-
-## 配置说明
-
-### 内核配置碎片
-
-`configs/base_defconfig_fragment` 包含所有自定义 CONFIG 项，在构建时合并到官方 defconfig。
-
-关键配置项：
-
-```
-# Root
-CONFIG_KALLSYMS=y
-CONFIG_KALLSYMS_ALL=y
-
-# hy / Mountify
-CONFIG_OVERLAY_FS=y
-CONFIG_TMPFS_XATTR=y
-CONFIG_TMPFS_POSIX_ACL=y
-
-# 网络
-CONFIG_TCP_CONG_BBR=y
-CONFIG_TCP_CONG_BBR3=y
-CONFIG_NET_SCH_FQ=y
-CONFIG_NET_SCH_CAKE=y
-CONFIG_WIREGUARD=y
-CONFIG_IP_SET=y
-CONFIG_NF_TPROXY=y
-
-# ZRAM
-CONFIG_ZRAM=y
-CONFIG_ZRAM_MULTI_COMP=y
-CONFIG_ZRAM_WRITEBACK=y
-
-# 容器
-CONFIG_PID_NS=y
-CONFIG_IPC_NS=y
-CONFIG_USER_NS=y
-CONFIG_NTSYNC=y
-```
-
-### 默认策略
-
-所有默认策略在 AK3 刷写时通过音量键选择，由 `anykernel.sh` 中的 `pre_checks()` 设置初始默认值：
-
-```bash
-SCHED_CHOICE="wait"     # 默认调度
-TCP_CHOICE="bbr3"       # 默认 TCP
-QDISC_CHOICE="fq"       # 默认 qdisc
-ZRAM_CHOICE="lz4"       # 默认 ZRAM
-BBG_CHOICE="on"         # 默认 BBG
-KPM_CHOICE="no"         # 默认不应用 KPM
-BACKUP_CHOICE="yes"     # 默认备份
-```
-
----
-
-## 常见问题 (FAQ)
-
-### Q: 刷写后无法开机怎么办？
-
-A: 重启进入 Recovery，使用刷写时创建的备份（`/data/kernel_backup_*/init_boot.img`）刷回原版 init_boot。建议刷写时选择「备份」。
-
-### Q: 杜比音效怎么开启？
-
-A: 杜比解码器不在内核中。请安装用户态 KSU 模块（如 dolbycodec2 / Oplus AIDL D1 系）。内核只保证音频通路不被破坏。
-
-### Q: 风驰/HMBIRD 怎么启用？
-
-A: 刷写时在【1/7】选择音量-。注意：风驰为非官方全量补丁，不等同于官方风驰 1:1。如启用后异常，可通过 sysfs 节点回退到 wait。
-
-### Q: KPM 选「应用」和「不应用」有什么区别？
-
-A:
-- **不应用（推荐）**：不改 Image KPM 段，之后用 KPatch-Next 模块加载 `.kpm`
-- **应用**：执行 patch_android 流程，将 KPM 嵌入内核镜像
-
-两种路径均要求 `KALLSYMS=y` + `KALLSYMS_ALL=y`。
-
-### Q: BBG 是什么？可以关吗？
-
-A: Baseband Guard 是内核 LSM，拦截对关键分区/节点的违规写入，降低格机风险。默认开启，可在刷写时选择关闭（仅排障时建议）。
-
-### Q: 构建失败怎么办？
-
-A:
-1. 检查 `out/build.log` 中的错误信息
-2. 确认工具链正确安装
-3. 确认补丁已正确合入（`./scripts/patch.sh verify`）
-4. 尝试清理后重新构建（`./build.sh clean && ./build.sh all`）
-
----
-
-## 注意事项
-
-1. **仅适用于一加 13（sun / SM8750）+ ColorOS 16 国行**，刷入其他设备可能导致无法开机。
-2. **刷写前务必备份** init_boot，以便回滚。
-3. **不修改基带镜像**，基带相关功能保持官方行为。
-4. **杜比不依赖内核**，由用户态模块决定。
-5. **风驰为非官方补丁**，不等同于官方风驰 1:1，稳定性以真机为准。
-6. 合入补丁后如导致无法开机或官方关键功能失效，应回退该步，不得强行宣称完成。
-
----
-
-## 技术规格对照
-
-| 规格 | 本项目 |
-|------|--------|
-| 机型 | 一加 13（sun），SoC SM8750 |
-| 系统 | ColorOS 16 国行 |
-| 源码基准 | OnePlusOSS OOS SM8750 内核树 |
-| 产物 | 仅 AK3 zip |
-| 刷写路径 | init_boot（split_boot / flash_boot） |
-| 默认调度 | wait |
-| 默认 TCP | bbr3 |
-| 默认 qdisc | fq |
-| 默认 ZRAM | lz4 |
-| BBG | 默认开，可关 |
-| KPM | 刷写可选，默认不应用 |
-| KALLSYMS | 始终启用 (+ALL) |
-| 杜比 | 不进内核，用户态模块 |
-| 基带 | 不修改 |
-| 构建 | GitHub Actions 可复现 |
-
----
-
-## 许可证
-
-本项目构建脚本和配置文件遵循其各自许可证。内核源码遵循 OnePlusOSS / GPL 许可证。各补丁遵循其原始仓库许可证。
-
----
-
-## 致谢
-
-- [OnePlusOSS](https://github.com/OnePlusOSS) - 官方内核源码
-- [ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) - Root 方案
-- [simonpunk/susfs4ksu](https://gitlab.com/simonpunk/susfs4ksu) - SuSFS
-- [Numbersf/SCHED_PATCH](https://github.com/Numbersf/SCHED_PATCH) - HMBIRD/风驰
-- [WildKernels](https://github.com/WildKernels/kernel_patches) - BBRv3、省电、NTSYNC 等
-- [vc-teahouse/Baseband-guard](https://github.com/vc-teahouse/Baseband-guard) - BBG
-- [Sakion-Team/Re-Kernel](https://github.com/Sakion-Team/Re-Kernel) - Re:Kernel
-- [Goldzxcbug/Droidspaces](https://github.com/Goldzxcbug/Droidspaces_Kernel_patch) - Droidspaces
-- [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU_patch) - ZRAM 等
+感谢 OnePlusOSS、Qualcomm / CodeLinaro、Android Common Kernel、ReSukiSU、SuSFS、WildKernels、SukiSU、Baseband Guard、Re:Kernel、AnyKernel3 及相关社区维护者。

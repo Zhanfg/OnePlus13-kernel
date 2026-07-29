@@ -1,25 +1,23 @@
-ACTIVE_STRATEGY=真 OKI 官方构建路径
-DEVICE=PJZ110_16.0.9.401(CN01) sun SM8750
-DISK=C不动 D~36GB空 E~199GB空
-WORKSPACE=/home/axymorrsen/op13-oki (WSL ext4 on E:\WSL\Ubuntu)
-MANIFEST=oneplus/sm8750 + oneplus_13_b.xml
-STATUS=
-  ✅ A1-A5: 环境准备完成（repo 安装、磁盘策略）
-  ✅ B1-B4: repo init + sync 完成（~11GB，common tip: e1b346b6b）
-  ✅ C1-C3: oplus_build_kernel.sh sun perf 构建成功
-  ✅ D1: 静态验收通过（Android clang r510928, 6.6.118-android15-8-...-4k, ~36MB）
-  ✅ E1-E3: AK3 已打包 → releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
-  ❌ F: 真机刷入待验证
-  ❌ G: Root/功能待后续
+ACTIVE_STRATEGY=完整 OnePlus OKI 官方构建路径
+DEVICE=PJZ110_16.0.9.401(CN01)
+CODENAME=sun
+SOC=SM8750
+MANIFEST_REPO=https://github.com/OnePlusOSS/kernel_manifest.git
+MANIFEST_BRANCH=oneplus/sm8750
+MANIFEST_FILE=oneplus_13_b.xml
+COMMON_REPO=https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750.git
+COMMON_BRANCH=oneplus/sm8750_b_16.0.0_oneplus_13
+COMMON_UPSTREAM_SHA=e1b346b6b4f4096eb342ae3684838a942fd6f6c4
+MSM_KERNEL_REPO=https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750.git
+MSM_KERNEL_BRANCH=oneplus/sm8750_b_16.0.0_oneplus_13
+MSM_KERNEL_UPSTREAM_SHA=6028f47faddaa27700f8dd3a1d83906ea8f27170
+KERNEL_VERSION=6.6.118
 BUILD_CMD=./kernel_platform/oplus/build/oplus_build_kernel.sh sun perf
-PRODUCT=v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
-NEXT=
-  - 基带问题根因: vendor_boot.img 未一起刷（vermagic 不匹配）
-  - abogki tag 已在本地创建，但构建系统增量缓存损坏，重建困难
-  - 可行方案: 用现有产物 Image + vendor_boot.img 打包同一个 AK3
-  - 重建需要修复 OKI 构建系统（Bazel 缓存 + 缺失的源码文件）
-BUILD_STATUS=
-  - 第一次 OKI 构建产物: $OKI/out/dist/Image + vendor_boot.img ✅
-  - 重建尝试: 失败（Bazel 增量缓存损坏）
-  - abogki tag: 已本地创建 common + msm-kernel
-UPDATED=2026-07-24
+STATUS=Experimental
+BUILD_STATUS=完整 OKI 官方路径曾完成构建并生成 Image 与 vendor_boot 相关产物
+BOOT_STATUS=待真机验证
+RUNTIME_STATUS=Root、SuSFS、调度、网络、蜂窝、Wi-Fi、相机、指纹、充电和休眠待验证
+RELEASE_POLICY=未完成 Boot Verified 前不得标记 Stable 或作为日用发布
+ROLLBACK_REQUIREMENT=必须保存与当前系统版本匹配的原版 boot、vendor_boot 和可靠恢复路径
+PRIVACY=本文件不得记录本机绝对路径、磁盘布局、用户名、账号、Token、Cookie、密钥或设备私密数据
+UPDATED=2026-07-29

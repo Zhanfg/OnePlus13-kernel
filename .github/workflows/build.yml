@@ -1,20 +1,31 @@
-name: Build Kernel
+name: Experimental Single-Tree Build (Do Not Flash)
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   KERNEL_BRANCH: oneplus/sm8750_b_16.0.0_oneplus_13
 
 jobs:
-  build:
+  experimental-build:
+    name: Experimental syntax build — not a release artifact
     runs-on: ubuntu-24.04
     timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Show safety notice
+        run: |
+          cat <<'EOF'
+          WARNING: This workflow clones only the msm-kernel repository and creates
+          empty Kconfig/Makefile stubs for missing OKI components. It is not a full
+          OnePlus OKI build and its artifact must not be treated as flash-ready,
+          Boot Verified, Runtime Verified, or Stable.
+          EOF
 
       - name: Install Dependencies
         run: |
@@ -25,59 +36,54 @@ jobs:
         run: |
           git clone --depth=1 --branch "${{ env.KERNEL_BRANCH }}" https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750.git kernel_source
           cd kernel_source
-          echo "KERNEL_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          echo "KERNEL_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           KERNEL_VER=$(make kernelversion 2>/dev/null || echo "unknown")
-          echo "KERNEL_VERSION=$KERNEL_VER" >> $GITHUB_ENV
+          echo "KERNEL_VERSION=$KERNEL_VER" >> "$GITHUB_ENV"
           echo "Kernel: $KERNEL_VER"
 
-      - name: Configure and Build
+      - name: Configure and Build Experimental Image
         run: |
           set +e
           cd kernel_source
           export ARCH=arm64 CC=clang CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          # 1. Remove ALL gitlink files and create stub dirs with empty Makefiles
-          echo "=== Removing gitlink files ==="
+          echo "=== Removing gitlink files and creating experimental stubs ==="
           git ls-files --stage | grep '^160000' | awk '{print $4}' | while read -r gl; do
             echo "  Gitlink: $gl -> stub dir"
             rm -f "$gl"
             mkdir -p "$gl"
-            echo "# stub" > "$gl/Makefile"
-            echo "# stub" > "$gl/Kconfig"
+            echo "# experimental stub" > "$gl/Makefile"
+            echo "# experimental stub" > "$gl/Kconfig"
           done
 
-          # 2. Pre-scan ALL Kconfig source references and create stubs
           echo "=== Pre-scanning Kconfig sources ==="
           grep -rh 'source "' --include="Kconfig*" . 2>/dev/null | \
             sed 's/.*source "//; s/".*//' | sort -u | while read -r kf; do
             if [ -n "$kf" ] && [ ! -f "$kf" ]; then
               mkdir -p "$(dirname "$kf")" 2>/dev/null
-              echo "# stub Kconfig" > "$kf" 2>/dev/null && echo "  Stub: $kf"
+              echo "# experimental stub Kconfig" > "$kf" 2>/dev/null && echo "  Stub: $kf"
             fi
           done
 
-          # 2b. Pre-scan Makefiles for missing subdirectory references
           echo "=== Pre-scanning Makefile subdirs ==="
           find . -name Makefile -not -path './scripts/*' -not -path './tools/*' 2>/dev/null | while read -r mf; do
             mdir=$(dirname "$mf")
             grep -oP '(?:obj-\$\([^)]+\)|obj-y|obj-m)\s*\+=\s*\K[^\s/]+(?=/)' "$mf" 2>/dev/null | sort -u | while read -r sub; do
               if [ ! -f "$mdir/$sub/Makefile" ]; then
                 mkdir -p "$mdir/$sub"
-                echo "# stub" > "$mdir/$sub/Makefile"
+                echo "# experimental stub" > "$mdir/$sub/Makefile"
                 echo "  Stub Makefile: $mdir/$sub/"
               fi
             done
           done
 
-          # 3. Copy base defconfig and merge vendor configs
           cp arch/arm64/configs/gki_defconfig .config
           [ -f arch/arm64/configs/vendor/sun_oplus_common.config ] && \
             ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/sun_oplus_common.config 2>&1 | tail -3
           [ -f arch/arm64/configs/vendor/sun_consolidate.config ] && \
             ./scripts/kconfig/merge_config.sh -m .config arch/arm64/configs/vendor/sun_consolidate.config 2>&1 | tail -3
 
-          # 4. Force key configs
           for cfg in "CONFIG_KALLSYMS=y" "CONFIG_KALLSYMS_ALL=y" "CONFIG_OVERLAY_FS=y" "CONFIG_ZRAM=y" "CONFIG_NET_SCH_FQ=y" "CONFIG_WIREGUARD=y"; do
             key="${cfg%=*}"
             if grep -q "^${key}=" .config 2>/dev/null; then sed -i "s|^${key}=.*|${cfg}|" .config
@@ -85,8 +91,7 @@ jobs:
             else echo "$cfg" >> .config; fi
           done
 
-          # 5. Auto-fix loop: resolve remaining missing Kconfig
-          echo "=== Resolving Kconfig ==="
+          echo "=== Resolving Kconfig experimentally ==="
           for i in $(seq 1 30); do
             ERR=$(make ARCH=arm64 CC=clang olddefconfig 2>&1)
             MISSING=$(echo "$ERR" | grep "can't open file" | head -1 | sed 's/.*can.t open file "//; s/".*//')
@@ -96,42 +101,39 @@ jobs:
             fi
             echo "  Fixing: $MISSING"
             parent="$(dirname "$MISSING")"
-            # Remove any file blocking the path
             check="$parent"
             while [ "$check" != "." ] && [ "$check" != "/" ]; do
               if [ -f "$check" ] || [ -L "$check" ]; then rm -f "$check"; fi
               check=$(dirname "$check")
             done
             mkdir -p "$parent" 2>/dev/null
-            echo "# stub Kconfig" > "$MISSING" 2>/dev/null
+            echo "# experimental stub Kconfig" > "$MISSING" 2>/dev/null
           done
 
-          # 6. Build kernel with auto-fix for missing Makefiles
-          echo "=== Building kernel ==="
+          echo "=== Building experimental Image ==="
           for attempt in $(seq 1 10); do
-            make ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image 2>&1 | tee build.log
+            make ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)" Image 2>&1 | tee build.log
             if [ -f arch/arm64/boot/Image ]; then
-              echo "=== BUILD SUCCESS ==="
+              echo "=== EXPERIMENTAL BUILD SUCCESS ==="
               echo "Size: $(du -h arch/arm64/boot/Image | cut -f1)"
               exit 0
             fi
-            # Check for missing Makefile
             MF_ERR=$(grep 'Makefile: No such file' build.log | head -1 | sed 's/.*: *//; s/: No such file.*//')
             if [ -n "$MF_ERR" ]; then
               echo "  Fixing missing Makefile: $MF_ERR (attempt $attempt)"
               mkdir -p "$(dirname "$MF_ERR")" 2>/dev/null
-              echo "# stub" > "$MF_ERR"
+              echo "# experimental stub" > "$MF_ERR"
               continue
             fi
-            echo "=== BUILD FAILED (non-Makefile error) ==="
+            echo "=== EXPERIMENTAL BUILD FAILED (non-Makefile error) ==="
             grep -i 'error:' build.log | head -20
             tail -50 build.log
             exit 1
           done
-          echo "=== BUILD FAILED after 10 attempts ==="
+          echo "=== EXPERIMENTAL BUILD FAILED after 10 attempts ==="
           exit 1
 
-      - name: Package AK3
+      - name: Package Experimental AK3
         run: |
           IMAGE="kernel_source/arch/arm64/boot/Image"
           [ -f "$IMAGE" ] || exit 1
@@ -142,27 +144,34 @@ jobs:
           cp anykernel/META-INF/com/google/android/update-binary ak3/META-INF/com/google/android/
           cp anykernel/META-INF/com/google/android/updater-script ak3/META-INF/com/google/android/
           cp "$IMAGE" ak3/Image
-          ZIP="OnePlus13-sun-custom.zip"
+          printf '%s\n' \
+            'EXPERIMENTAL ONLY' \
+            'Not produced from the complete OnePlus OKI manifest.' \
+            'Do not treat this archive as a release or verified flash package.' \
+            > ak3/EXPERIMENTAL_DO_NOT_FLASH.txt
+          ZIP="EXPERIMENTAL-DO-NOT-FLASH-OnePlus13-sun-single-tree.zip"
           cd ak3 && zip -r9 "../$ZIP" . && cd ..
           sha256sum "$ZIP" > "${ZIP}.sha256"
-          echo "=== AK3 Complete ==="
+          echo "=== Experimental AK3 Complete ==="
           du -h "$ZIP"
           cat "${ZIP}.sha256"
 
-      - name: Upload AK3
+      - name: Upload Experimental Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlus13-AK3
+          name: EXPERIMENTAL-DO-NOT-FLASH-OnePlus13
           path: |
-            *.zip
-            *.sha256
+            EXPERIMENTAL-DO-NOT-FLASH-*.zip
+            EXPERIMENTAL-DO-NOT-FLASH-*.zip.sha256
+          retention-days: 3
 
       - name: Upload Log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: experimental-build-log
           path: |
             kernel_source/build.log
             kernel_source/.config
           if-no-files-found: ignore
+          retention-days: 7
