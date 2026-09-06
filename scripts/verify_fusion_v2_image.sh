@@ -63,9 +63,14 @@ verify_fragment() {
 for fragment in "${FRAGMENTS[@]}"; do verify_fragment "$fragment"; done
 log "IKCONFIG verified against Root + Standard fragments"
 
-# Additional negative checks: first Standard build must not accidentally carry optional experimental layers.
-grep -qx 'CONFIG_BBG=y' "$config_tmp" && die "Baseband Guard unexpectedly enabled in Standard"
-grep -qx 'CONFIG_DRM_LINDROID_EVDI=y' "$config_tmp" && die "Lindroid EVDI unexpectedly enabled in Standard"
+# Standard must expose ADIOS but must not force it as the default scheduler.
+grep -qx 'CONFIG_MQ_IOSCHED_ADIOS=y' "$config_tmp" || die "ADIOS is not built-in in Standard"
+grep -qx '# CONFIG_MQ_IOSCHED_DEFAULT_ADIOS is not set' "$config_tmp" || die "ADIOS was unexpectedly forced as the default scheduler"
+grep -qx 'CONFIG_NTSYNC=y' "$config_tmp" || die "NTSYNC is not built-in in Standard"
+
+# Optional experimental layers must be absent both built-in and as modules.
+grep -Eq '^CONFIG_BBG=[ym]$' "$config_tmp" && die "Baseband Guard unexpectedly enabled in Standard"
+grep -Eq '^CONFIG_DRM_LINDROID_EVDI=[ym]$' "$config_tmp" && die "Lindroid EVDI unexpectedly enabled in Standard"
 
 # KPatch-Next metadata must be parseable by the exact host tool.
 [[ -n "$KPTOOLS" ]] || die "KPTOOLS is required for strict KPatch-Next verification"
