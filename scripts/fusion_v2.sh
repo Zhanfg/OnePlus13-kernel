@@ -28,13 +28,16 @@ Usage:
   bash scripts/fusion_v2.sh patch-image /path/to/Image /path/to/Image.kpatch-next
 
 Architecture:
-  OnePlus OKI platform + pinned Fusion common -> ReSukiSU + SUSFS 2.3.x -> build Image -> KPatch-Next -> AK3
+  OnePlus official 16.0.9.401 common + isolated ADIOS + deterministic NTSYNC
+  -> ReSukiSU + SUSFS 2.3.x -> build Image -> KPatch-Next -> AK3
 
 Important:
   - ReSukiSU remains the only root core.
   - SUSFS official-KernelSU 10_enable_susfs_for_ksu.patch is intentionally NOT applied.
   - KPatch-Next is a post-build Image patch/KPM runtime, not a root core.
   - kptools is built for the BUILD HOST; kpimg is built for ARM64.
+  - Historical custom-common history is used only as a pinned NTSYNC source reference,
+    never as the complete build base.
 EOF
 }
 
@@ -77,7 +80,7 @@ verify_base() {
   if [[ "$common_sha" == "$ONEPLUS_COMMON_SHA" ]]; then
     common_kind="official"
   elif [[ -n "${FUSION_COMMON_COMMIT:-}" && "$common_sha" == "$FUSION_COMMON_COMMIT" ]]; then
-    common_kind="fusion"
+    common_kind="fusion-official-base"
   else
     die "common base drift: expected official $ONEPLUS_COMMON_SHA or fusion ${FUSION_COMMON_COMMIT:-<unset>}, got $common_sha"
   fi
@@ -91,6 +94,63 @@ require_clean_common() {
   git -C "$common" diff --quiet || die "common worktree has unstaged changes"
   git -C "$common" diff --cached --quiet || die "common worktree has staged changes"
   [[ -z "$(git -C "$common" ls-files --others --exclude-standard | head -n1)" ]] || die "common worktree has untracked files"
+}
+
+install_ntsync() {
+  local common="$KERNEL_PLATFORM/common"
+  local driver="$common/$NTSYNC_DRIVER_PATH"
+  local uapi="$common/$NTSYNC_UAPI_PATH"
+  local kconfig="$common/drivers/misc/Kconfig"
+  local makefile="$common/drivers/misc/Makefile"
+
+  [[ -f "$kconfig" && -f "$makefile" ]] || die "misc Kconfig/Makefile missing"
+  mkdir -p "$(dirname "$driver")" "$(dirname "$uapi")"
+
+  # Fetch the exact audited reference object, but never switch the common tree to it.
+  git -C "$common" fetch --force --depth=1 "$NTSYNC_REFERENCE_REPO" "$NTSYNC_REFERENCE_COMMIT"
+  git -C "$common" cat-file -e "$NTSYNC_REFERENCE_COMMIT^{commit}" || die "NTSYNC reference commit unavailable"
+  git -C "$common" show "$NTSYNC_REFERENCE_COMMIT:$NTSYNC_DRIVER_PATH" > "$driver"
+  git -C "$common" show "$NTSYNC_REFERENCE_COMMIT:$NTSYNC_UAPI_PATH" > "$uapi"
+
+  [[ "$(git -C "$common" hash-object "$driver")" == "$NTSYNC_DRIVER_BLOB" ]] || die "NTSYNC driver blob mismatch"
+  [[ "$(git -C "$common" hash-object "$uapi")" == "$NTSYNC_UAPI_BLOB" ]] || die "NTSYNC UAPI blob mismatch"
+
+  python3 - "$kconfig" "$makefile" <<'PY'
+from pathlib import Path
+import sys
+
+kconfig = Path(sys.argv[1])
+makefile = Path(sys.argv[2])
+
+k = kconfig.read_text()
+if "\nconfig NTSYNC\n" not in k:
+    anchor = "config VCPU_STALL_DETECTOR\n"
+    if k.count(anchor) != 1:
+        raise SystemExit(f"NTSYNC Kconfig anchor count is {k.count(anchor)}, expected 1")
+    block = (
+        'config NTSYNC\n'
+        '\ttristate "NT synchronization primitive emulation"\n'
+        '\tdefault n\n'
+        '\thelp\n'
+        '\t  This module provides kernel support for emulation of Windows NT\n'
+        '\t  synchronization primitives. It is not a hardware driver.\n\n'
+    )
+    k = k.replace(anchor, block + anchor, 1)
+    kconfig.write_text(k)
+
+m = makefile.read_text()
+entry = 'obj-$(CONFIG_NTSYNC)\t\t+= ntsync.o'
+if entry not in m:
+    anchor = 'obj-$(CONFIG_HISI_HIKEY_USB)\t+= hisi_hikey_usb.o'
+    if m.count(anchor) != 1:
+        raise SystemExit(f"NTSYNC Makefile anchor count is {m.count(anchor)}, expected 1")
+    m = m.replace(anchor, anchor + '\n' + entry, 1)
+    makefile.write_text(m)
+PY
+
+  grep -q '^config NTSYNC$' "$kconfig" || die "NTSYNC Kconfig entry missing after port"
+  grep -qF 'obj-$(CONFIG_NTSYNC)' "$makefile" || die "NTSYNC Makefile entry missing after port"
+  log "NTSYNC minimal backport prepared from pinned audited blobs"
 }
 
 install_resukisu() {
@@ -132,7 +192,7 @@ install_susfs() {
   cp -a "$susfs/$SUSFS_FS_DIR/." "$common/fs/"
   cp -a "$susfs/$SUSFS_INCLUDE_DIR/." "$common/include/linux/"
 
-  git -C "$common" apply --check "$patch" || die "SUSFS 2.3 common patch conflicts with this common base; manual adaptation required"
+  git -C "$common" apply --check "$patch" || die "SUSFS 2.3 common patch conflicts with this official-based common; manual adaptation required"
   git -C "$common" apply "$patch"
 
   grep -q '#define SUSFS_VERSION "v2.3.0"' "$common/include/linux/susfs.h" || die "SUSFS version is not v2.3.0"
@@ -144,9 +204,10 @@ integrate_root() {
   verify_base
   require_clean_common
   fetch_deps
+  install_ntsync
   install_resukisu
   install_susfs
-  log "root stack prepared; KPatch-Next was NOT inserted into common"
+  log "Fusion source stack prepared; KPatch-Next was NOT inserted into common"
   log "next: bash scripts/apply_fusion_v2_standard_config.sh '$KERNEL_PLATFORM/common'"
 }
 
@@ -154,6 +215,16 @@ verify_source() {
   require_platform
   local common="$KERNEL_PLATFORM/common"
   local resukisu="$KERNEL_PLATFORM/KernelSU"
+
+  [[ -f "$common/$NTSYNC_DRIVER_PATH" ]] || die "NTSYNC driver missing"
+  [[ -f "$common/$NTSYNC_UAPI_PATH" ]] || die "NTSYNC UAPI missing"
+  [[ "$(git -C "$common" hash-object "$common/$NTSYNC_DRIVER_PATH")" == "$NTSYNC_DRIVER_BLOB" ]] || die "NTSYNC driver verification failed"
+  [[ "$(git -C "$common" hash-object "$common/$NTSYNC_UAPI_PATH")" == "$NTSYNC_UAPI_BLOB" ]] || die "NTSYNC UAPI verification failed"
+  grep -q '^config NTSYNC$' "$common/drivers/misc/Kconfig" || die "NTSYNC Kconfig entry missing"
+  grep -qF 'obj-$(CONFIG_NTSYNC)' "$common/drivers/misc/Makefile" || die "NTSYNC Makefile entry missing"
+
+  [[ -f "$common/block/adios.c" ]] || die "ADIOS source missing from pinned Fusion common"
+  grep -q '#define ADIOS_VERSION "3.2.0"' "$common/block/adios.c" || die "ADIOS 3.2.0 verification failed"
 
   [[ -L "$common/drivers/kernelsu" ]] || die "drivers/kernelsu is not the expected ReSukiSU symlink"
   [[ -d "$resukisu/.git" ]] || die "KernelSU/ReSukiSU checkout missing"
