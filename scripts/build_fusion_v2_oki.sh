@@ -22,8 +22,8 @@ usage() {
   cat <<EOF
 Usage: OKI_WORKSPACE=/path/to/op13-oki bash scripts/build_fusion_v2_oki.sh <action>
 Actions:
-  sync      Sync exact OnePlus complete OKI manifest, verify official platform, then pin Fusion common
-  prepare   Integrate ReSukiSU + SUSFS 2.3 and apply Fusion V2 Standard config
+  sync      Sync exact OnePlus complete OKI manifest, verify official platform, then pin minimal Fusion common
+  prepare   Port NTSYNC, integrate ReSukiSU + SUSFS 2.3, and apply Fusion V2 Standard config
   build     Clean-build OnePlus sun perf and verify Image/config
   kpatch    Build KPatch-Next and patch Image, then run static gates
   all       sync -> prepare -> build -> kpatch
@@ -47,13 +47,34 @@ verify_official_platform() {
 
 switch_fusion_common() {
   local common="$OKI/kernel_platform/common"
+  local ahead behind
+
+  [[ "$FUSION_COMMON_COMMIT" != "${NTSYNC_REFERENCE_COMMIT:-}" ]] || die "historical NTSYNC reference must never be used as the complete Fusion common"
+
   git -C "$common" remote remove fusion >/dev/null 2>&1 || true
   git -C "$common" remote add fusion "$FUSION_COMMON_REPO"
-  git -C "$common" fetch --force --depth=1 fusion "$FUSION_COMMON_COMMIT"
-  git -C "$common" checkout --detach FETCH_HEAD
+  # Keep enough ancestry to prove that the Fusion branch is a small direct extension
+  # of the exact OnePlus common used by this ROM.
+  git -C "$common" fetch --force --depth=16 fusion "$FUSION_COMMON_COMMIT"
+  git -C "$common" cat-file -e "$ONEPLUS_COMMON_SHA^{commit}" || die "official OnePlus common object missing during lineage check"
+  git -C "$common" cat-file -e "$FUSION_COMMON_COMMIT^{commit}" || die "Fusion common object missing after fetch"
+  git -C "$common" merge-base --is-ancestor "$ONEPLUS_COMMON_SHA" "$FUSION_COMMON_COMMIT" || \
+    die "Fusion common is not descended from the exact OnePlus 16.0.9.401 common"
+
+  ahead="$(git -C "$common" rev-list --count "$ONEPLUS_COMMON_SHA..$FUSION_COMMON_COMMIT")"
+  behind="$(git -C "$common" rev-list --count "$FUSION_COMMON_COMMIT..$ONEPLUS_COMMON_SHA")"
+  [[ "$behind" == "0" ]] || die "Fusion common is behind/diverged from official OnePlus common: behind=$behind"
+  (( ahead >= 1 && ahead <= 16 )) || die "Fusion common delta is unexpectedly large: ahead=$ahead"
+
+  git -C "$common" checkout --detach "$FUSION_COMMON_COMMIT"
   [[ "$(git -C "$common" rev-parse HEAD)" == "$FUSION_COMMON_COMMIT" ]] || die "Fusion common checkout mismatch"
   git -C "$common" diff --quiet || die "Fusion common dirty immediately after checkout"
-  log "Fusion common pinned: $FUSION_COMMON_COMMIT"
+  [[ -f "$common/block/adios.c" ]] || die "minimal Fusion common lacks ADIOS source"
+  grep -q '#define ADIOS_VERSION "3.2.0"' "$common/block/adios.c" || die "minimal Fusion common ADIOS version mismatch"
+
+  printf 'official_common=%s\nfusion_common=%s\nahead=%s\nbehind=%s\n' \
+    "$ONEPLUS_COMMON_SHA" "$FUSION_COMMON_COMMIT" "$ahead" "$behind" > "$OKI/fusion-common-lineage.txt"
+  log "minimal Fusion common verified: official-base=$ONEPLUS_COMMON_SHA fusion=$FUSION_COMMON_COMMIT ahead=$ahead behind=$behind"
 }
 
 verify_build_platform() {
@@ -79,7 +100,7 @@ sync_oki() {
   verify_official_platform
   switch_fusion_common
   verify_build_platform
-  log "complete OKI sync + Fusion common switch verified"
+  log "complete OKI sync + minimal Fusion common switch verified"
 }
 
 ensure_abogki_tags() {
@@ -182,6 +203,7 @@ build_oki() {
   git -C "$OKI/kernel_platform/msm-kernel" rev-parse HEAD > "$OKI/out/dist/msm-kernel.commit"
   cp "$OKI/manifest-pinned.xml" "$OKI/out/dist/manifest-pinned.xml"
   cp "$OKI/manifest-pinned.xml.sha256" "$OKI/out/dist/manifest-pinned.xml.sha256"
+  cp "$OKI/fusion-common-lineage.txt" "$OKI/out/dist/fusion-common-lineage.txt"
   cp "$log_file" "$OKI/out/dist/build.log"
   log "raw Image built: $OKI/out/dist/Image ($image_size bytes)"
 }
