@@ -20,7 +20,9 @@ permissions:
 
 concurrency:
   group: fusion-v2-full-oki-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep a currently-running full OKI build alive. A newer cache/config commit waits
+  # instead of throwing away an hour-long source sync/build.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -55,6 +57,27 @@ jobs:
           chmod +x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
 
+      - name: Restore Bazel caches
+        id: bazel-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .fusion-cache/bazel-disk
+            .fusion-cache/bazel-repository
+          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
+          restore-keys: |
+            fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock') }}-
+            fusion-v2-bazel-${{ runner.os }}-
+
+      - name: Prepare Bazel cache directories
+        run: |
+          mkdir -p \
+            "$GITHUB_WORKSPACE/.fusion-cache/bazel-disk" \
+            "$GITHUB_WORKSPACE/.fusion-cache/bazel-repository" \
+            "$GITHUB_WORKSPACE/.bazel-output-user-root"
+          echo "cache_hit=${{ steps.bazel-cache-restore.outputs.cache-hit }}"
+          du -sh "$GITHUB_WORKSPACE/.fusion-cache"/* 2>/dev/null || true
+
       - name: Shell syntax gate
         run: |
           set -euo pipefail
@@ -70,9 +93,63 @@ jobs:
           SYNC_JOBS: '4'
           TARGET_COMPILE: aarch64-linux-gnu-
           FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
+          # OnePlus build_with_bazel.py recognizes --cache_dir itself and forwards
+          # the remaining options to Bazel/Kleaf. The portable disk cache survives
+          # clean output trees; repository_cache avoids re-downloading Bazel externals.
+          EXTRA_KBUILD_ARGS: >-
+            --cache_dir=${{ github.workspace }}/.bazel-output-user-root
+            --disk_cache=${{ github.workspace }}/.fusion-cache/bazel-disk
+            --repository_cache=${{ github.workspace }}/.fusion-cache/bazel-repository
         run: |
           set -euo pipefail
           bash scripts/build_fusion_v2_oki.sh all
+
+      - name: Prune persistent Bazel caches
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def prune(root: str, limit_bytes: int) -> None:
+              base = Path(root)
+              if not base.exists():
+                  return
+              files = []
+              total = 0
+              for p in base.rglob('*'):
+                  try:
+                      if p.is_file() and not p.is_symlink():
+                          st = p.stat()
+                          total += st.st_size
+                          files.append((st.st_mtime_ns, st.st_size, p))
+                  except FileNotFoundError:
+                      pass
+              before = total
+              if total > limit_bytes:
+                  for _, size, p in sorted(files):
+                      try:
+                          p.unlink()
+                          total -= size
+                      except FileNotFoundError:
+                          pass
+                      if total <= limit_bytes:
+                          break
+              print(f'{base}: before={before} after={total} limit={limit_bytes}')
+
+          # Keep total GitHub cache comfortably below the repository cache quota.
+          prune('.fusion-cache/bazel-disk', 3_500 * 1024 * 1024)
+          prune('.fusion-cache/bazel-repository', 1_000 * 1024 * 1024)
+          PY
+          du -sh .fusion-cache/* 2>/dev/null || true
+
+      - name: Save Bazel caches
+        if: always() && steps.bazel-cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .fusion-cache/bazel-disk
+            .fusion-cache/bazel-repository
+          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
 
       - name: Assemble static candidate evidence
         if: success()
@@ -107,6 +184,7 @@ jobs:
 
           {
             echo "control_repo_commit=${GITHUB_SHA}"
+            echo "bazel_cache_restore_hit=${{ steps.bazel-cache-restore.outputs.cache-hit }}"
             echo "raw_image_sha256=$(sha256sum candidate/Image.raw | awk '{print $1}')"
             echo "patched_image_sha256=$(sha256sum candidate/Image | awk '{print $1}')"
             echo "raw_image_size=$(stat -c '%s' candidate/Image.raw)"
