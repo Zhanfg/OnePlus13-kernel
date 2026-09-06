@@ -1,0 +1,80 @@
+name: Fusion V2 Common Source Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - staging/fusion-v2-config-hardening
+    paths:
+      - '.github/workflows/fusion-v2-common-preflight.yml'
+      - 'scripts/fusion_v2.sh'
+      - 'scripts/preflight_fusion_v2_common.sh'
+      - 'scripts/apply_fusion_v2_standard_config.sh'
+      - 'configs/fusion_v2_sources.lock'
+      - 'configs/fusion_v2_root.fragment'
+      - 'configs/fusion_v2_standard.fragment'
+      - 'configs/oneplus_13_16.0.9.401.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fusion-v2-common-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Official common + ADIOS/NTSYNC + Root/SUSFS preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout control repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install preflight dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            bc bison build-essential ca-certificates flex git libelf-dev libssl-dev python3
+
+      - name: Clone only pinned Fusion common
+        run: |
+          set -euo pipefail
+          source configs/fusion_v2_sources.lock
+          source configs/oneplus_13_16.0.9.401.lock
+          mkdir -p kernel_platform
+          git init kernel_platform/common
+          git -C kernel_platform/common remote add origin "$FUSION_COMMON_REPO"
+          git -C kernel_platform/common fetch --force --depth=16 origin "$FUSION_COMMON_COMMIT"
+          git -C kernel_platform/common checkout --detach "$FUSION_COMMON_COMMIT"
+          test "$(git -C kernel_platform/common rev-parse HEAD)" = "$FUSION_COMMON_COMMIT"
+          git -C kernel_platform/common cat-file -e "$ONEPLUS_COMMON_SHA^{commit}"
+          git -C kernel_platform/common merge-base --is-ancestor "$ONEPLUS_COMMON_SHA" "$FUSION_COMMON_COMMIT"
+          echo "common-only clone ready"
+
+      - name: Shell syntax gate
+        run: |
+          set -euo pipefail
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/preflight_fusion_v2_common.sh
+          bash -n scripts/apply_fusion_v2_standard_config.sh
+
+      - name: Run production-source preflight
+        env:
+          KERNEL_PLATFORM: ${{ github.workspace }}/kernel_platform
+          FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2-preflight
+        run: |
+          set -euo pipefail
+          bash scripts/preflight_fusion_v2_common.sh | tee fusion-v2-common-preflight.txt
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v2-common-preflight-${{ github.run_number }}
+          path: fusion-v2-common-preflight.txt
+          if-no-files-found: ignore
+          retention-days: 7
