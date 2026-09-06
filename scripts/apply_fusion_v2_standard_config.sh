@@ -41,19 +41,35 @@ for fragment in "${FRAGMENTS[@]}"; do
   done < "$fragment"
 done
 
-# Resolve dependencies using the real source tree, then verify final values.
-make -C "$COMMON" ARCH=arm64 olddefconfig >/dev/null
+# Resolve the edited gki_defconfig in an isolated output directory. Running
+# `make olddefconfig` in the source root would validate common/.config instead of
+# the gki_defconfig we just edited and could therefore report a false PASS.
+resolve_dir="$(mktemp -d)"
+cleanup() { rm -rf "$resolve_dir"; }
+trap cleanup EXIT
+
+make -s -C "$COMMON" O="$resolve_dir" ARCH=arm64 gki_defconfig >/dev/null
+make -s -C "$COMMON" O="$resolve_dir" ARCH=arm64 olddefconfig >/dev/null
+resolved_config="$resolve_dir/.config"
+[[ -s "$resolved_config" ]] || fail "Kconfig resolution produced no .config"
+
+verify_line() {
+  local line="$1"
+  if [[ "$line" =~ ^CONFIG_([A-Za-z0-9_]+)=([ym])$ ]]; then
+    grep -qxF "$line" "$resolved_config" || fail "resolved config mismatch: $line"
+  elif [[ "$line" =~ ^#\ CONFIG_([A-Za-z0-9_]+)\ is\ not\ set$ ]]; then
+    grep -qxF "$line" "$resolved_config" || fail "resolved config did not keep disabled symbol: ${BASH_REMATCH[1]}"
+  else
+    fail "unsupported fragment line during verification: $line"
+  fi
+}
 
 for fragment in "${FRAGMENTS[@]}"; do
   while IFS= read -r line; do
     [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
-    if [[ "$line" =~ ^CONFIG_([A-Za-z0-9_]+)=([ym])$ ]]; then
-      grep -qx "$line" "$defconfig" || fail "final config mismatch: $line"
-    elif [[ "$line" =~ ^#\ CONFIG_([A-Za-z0-9_]+)\ is\ not\ set$ ]]; then
-      grep -qx "$line" "$defconfig" || fail "final config did not keep disabled symbol: ${BASH_REMATCH[1]}"
-    fi
+    verify_line "$line"
   done < "$fragment"
 done
 
-log "Fusion V2 Standard config verified"
-log "ADIOS is compiled but not forced as default; BBG/EVDI remain disabled in Standard"
+log "Fusion V2 config fragments passed real Kconfig dependency resolution"
+log "NTSYNC + ADIOS enabled; ADIOS default disabled; BBG/EVDI remain deferred in Standard"
