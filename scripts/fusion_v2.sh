@@ -24,17 +24,17 @@ Usage:
   KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-base
   KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh integrate-root
   KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-source
-  TARGET_COMPILE=aarch64-none-elf- bash scripts/fusion_v2.sh build-kpatch-next
+  TARGET_COMPILE=aarch64-linux-gnu- bash scripts/fusion_v2.sh build-kpatch-next
   bash scripts/fusion_v2.sh patch-image /path/to/Image /path/to/Image.kpatch-next
 
 Architecture:
-  OnePlus common -> ReSukiSU + SUSFS 2.3.x -> build Image -> KPatch-Next -> AK3
+  OnePlus OKI platform + pinned Fusion common -> ReSukiSU + SUSFS 2.3.x -> build Image -> KPatch-Next -> AK3
 
 Important:
   - ReSukiSU remains the only root core.
   - SUSFS official-KernelSU 10_enable_susfs_for_ksu.patch is intentionally NOT applied.
   - KPatch-Next is a post-build Image patch/KPM runtime, not a root core.
-  - kptools is built for the BUILD HOST; an Android arm64 kptools binary is not used to patch Image on CI.
+  - kptools is built for the BUILD HOST; kpimg is built for ARM64.
 EOF
 }
 
@@ -70,12 +70,20 @@ require_platform() {
 
 verify_base() {
   require_platform
-  local common_sha msm_sha
+  local common_sha msm_sha common_kind
   common_sha="$(git -C "$KERNEL_PLATFORM/common" rev-parse HEAD)"
   msm_sha="$(git -C "$KERNEL_PLATFORM/msm-kernel" rev-parse HEAD)"
-  [[ "$common_sha" == "$ONEPLUS_COMMON_SHA" ]] || die "common base drift: expected $ONEPLUS_COMMON_SHA got $common_sha"
+
+  if [[ "$common_sha" == "$ONEPLUS_COMMON_SHA" ]]; then
+    common_kind="official"
+  elif [[ -n "${FUSION_COMMON_COMMIT:-}" && "$common_sha" == "$FUSION_COMMON_COMMIT" ]]; then
+    common_kind="fusion"
+  else
+    die "common base drift: expected official $ONEPLUS_COMMON_SHA or fusion ${FUSION_COMMON_COMMIT:-<unset>}, got $common_sha"
+  fi
+
   [[ "$msm_sha" == "$ONEPLUS_MSM_SHA" ]] || die "msm-kernel base drift: expected $ONEPLUS_MSM_SHA got $msm_sha"
-  log "official OnePlus base verified: $ROM_BASE / $DEVICE_CODENAME"
+  log "OnePlus platform verified: ROM=$ROM_BASE device=$DEVICE_CODENAME common=$common_kind:$common_sha msm=$msm_sha"
 }
 
 require_clean_common() {
@@ -124,7 +132,7 @@ install_susfs() {
   cp -a "$susfs/$SUSFS_FS_DIR/." "$common/fs/"
   cp -a "$susfs/$SUSFS_INCLUDE_DIR/." "$common/include/linux/"
 
-  git -C "$common" apply --check "$patch" || die "SUSFS 2.3 common patch conflicts with this OnePlus base; manual adaptation required"
+  git -C "$common" apply --check "$patch" || die "SUSFS 2.3 common patch conflicts with this common base; manual adaptation required"
   git -C "$common" apply "$patch"
 
   grep -q '#define SUSFS_VERSION "v2.3.0"' "$common/include/linux/susfs.h" || die "SUSFS version is not v2.3.0"
@@ -139,7 +147,7 @@ integrate_root() {
   install_resukisu
   install_susfs
   log "root stack prepared; KPatch-Next was NOT inserted into common"
-  log "next: bash scripts/apply_fusion_v2_config.sh '$KERNEL_PLATFORM/common'"
+  log "next: bash scripts/apply_fusion_v2_standard_config.sh '$KERNEL_PLATFORM/common'"
 }
 
 verify_source() {
@@ -166,8 +174,8 @@ verify_source() {
 build_kpatch_next() {
   fetch_deps
   local kp="$DEPS_DIR/kpatch-next"
-  : "${TARGET_COMPILE:=aarch64-none-elf-}"
-  command -v "${TARGET_COMPILE}gcc" >/dev/null 2>&1 || die "missing bare-metal compiler: ${TARGET_COMPILE}gcc"
+  : "${TARGET_COMPILE:=aarch64-linux-gnu-}"
+  command -v "${TARGET_COMPILE}gcc" >/dev/null 2>&1 || die "missing ARM64 compiler: ${TARGET_COMPILE}gcc"
   command -v cmake >/dev/null 2>&1 || die "cmake not found"
 
   export TARGET_COMPILE
@@ -177,7 +185,7 @@ build_kpatch_next() {
     make
   )
 
-  # Build kptools natively for the build host. This binary performs the offline Image patch.
+  # Offline Image patcher must run on the build host.
   (
     cd "$kp/tools"
     rm -rf build/host
