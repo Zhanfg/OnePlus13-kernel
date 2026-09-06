@@ -1,4 +1,4 @@
-# Fusion V2 Standard — only features already present in the OnePlus 6.6 source tree.
+# Fusion V2 Standard — only features already present in the pinned OnePlus 6.6 Fusion common tree.
 
 # Network compatibility retained from the first audited GKI.
 CONFIG_NETFILTER_ADVANCED=y
@@ -16,10 +16,16 @@ CONFIG_PID_NS=y
 CONFIG_SYSVIPC=y
 CONFIG_POSIX_MQUEUE=y
 
+# Windows/Linux compatibility already implemented in the pinned Fusion common.
+CONFIG_NTSYNC=y
+
+# Keep ADIOS available, but do not force it as the default MQ I/O scheduler in Standard.
+CONFIG_MQ_IOSCHED_ADIOS=y
+# CONFIG_MQ_IOSCHED_DEFAULT_ADIOS is not set
+
 # Keep the standard security mechanism unless a dedicated compatibility test proves otherwise.
 CONFIG_SECURITY_SAFESETID=y
 
-# Deliberately NOT present here:
-# - CONFIG_NTSYNC: enabled only after the clean upstream NTSYNC source layer is installed.
-# - CONFIG_MQ_IOSCHED_ADIOS: enabled only after a reviewed Linux 6.6 backport exists.
-# - CONFIG_BBG / CONFIG_DRM_LINDROID_EVDI: deferred optional layers.
+# Deferred optional layers are intentionally not enabled in Standard:
+# - CONFIG_BBG
+# - CONFIG_DRM_LINDROID_EVDI
