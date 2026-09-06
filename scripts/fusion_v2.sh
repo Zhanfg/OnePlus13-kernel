@@ -3,24 +3,29 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="$ROOT_DIR/configs/fusion_v2_sources.lock"
+BASE_LOCK_FILE="$ROOT_DIR/configs/oneplus_13_16.0.9.401.lock"
 WORK_DIR="${FUSION_WORK_DIR:-$ROOT_DIR/.work/fusion-v2}"
 DEPS_DIR="$WORK_DIR/deps"
 
 log() { printf '[fusion-v2] %s\n' "$*"; }
 die() { printf '[fusion-v2][ERROR] %s\n' "$*" >&2; exit 1; }
 
-[[ -f "$LOCK_FILE" ]] || die "missing lock file: $LOCK_FILE"
+[[ -f "$LOCK_FILE" ]] || die "missing source lock: $LOCK_FILE"
+[[ -f "$BASE_LOCK_FILE" ]] || die "missing OnePlus base lock: $BASE_LOCK_FILE"
 # shellcheck disable=SC1090
 source "$LOCK_FILE"
+# shellcheck disable=SC1090
+source "$BASE_LOCK_FILE"
 
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/fusion_v2.sh fetch
-  KERNEL_PLATFORM=/path/to/kernel_platform scripts/fusion_v2.sh integrate-root
-  KERNEL_PLATFORM=/path/to/kernel_platform scripts/fusion_v2.sh verify-source
-  scripts/fusion_v2.sh build-kpatch-next
-  scripts/fusion_v2.sh patch-image /path/to/Image /path/to/Image.kpatch-next
+  bash scripts/fusion_v2.sh fetch
+  KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-base
+  KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh integrate-root
+  KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-source
+  TARGET_COMPILE=aarch64-none-elf- bash scripts/fusion_v2.sh build-kpatch-next
+  bash scripts/fusion_v2.sh patch-image /path/to/Image /path/to/Image.kpatch-next
 
 Architecture:
   OnePlus common -> ReSukiSU + SUSFS 2.3.x -> build Image -> KPatch-Next -> AK3
@@ -29,6 +34,7 @@ Important:
   - ReSukiSU remains the only root core.
   - SUSFS official-KernelSU 10_enable_susfs_for_ksu.patch is intentionally NOT applied.
   - KPatch-Next is a post-build Image patch/KPM runtime, not a root core.
+  - kptools is built for the BUILD HOST; an Android arm64 kptools binary is not used to patch Image on CI.
 EOF
 }
 
@@ -57,8 +63,19 @@ fetch_deps() {
 
 require_platform() {
   : "${KERNEL_PLATFORM:?set KERNEL_PLATFORM to the complete OnePlus kernel_platform directory}"
-  [[ -d "$KERNEL_PLATFORM/common/.git" ]] || die "not a complete kernel_platform/common git tree: $KERNEL_PLATFORM/common"
-  [[ -d "$KERNEL_PLATFORM/oplus/build" ]] || die "missing OnePlus OKI build tree: $KERNEL_PLATFORM/oplus/build"
+  [[ -d "$KERNEL_PLATFORM/common/.git" ]] || die "missing kernel_platform/common git tree"
+  [[ -d "$KERNEL_PLATFORM/msm-kernel/.git" ]] || die "missing kernel_platform/msm-kernel git tree"
+  [[ -d "$KERNEL_PLATFORM/oplus/build" ]] || die "missing complete OnePlus OKI build tree: oplus/build"
+}
+
+verify_base() {
+  require_platform
+  local common_sha msm_sha
+  common_sha="$(git -C "$KERNEL_PLATFORM/common" rev-parse HEAD)"
+  msm_sha="$(git -C "$KERNEL_PLATFORM/msm-kernel" rev-parse HEAD)"
+  [[ "$common_sha" == "$ONEPLUS_COMMON_SHA" ]] || die "common base drift: expected $ONEPLUS_COMMON_SHA got $common_sha"
+  [[ "$msm_sha" == "$ONEPLUS_MSM_SHA" ]] || die "msm-kernel base drift: expected $ONEPLUS_MSM_SHA got $msm_sha"
+  log "official OnePlus base verified: $ROM_BASE / $DEVICE_CODENAME"
 }
 
 require_clean_common() {
@@ -81,7 +98,6 @@ install_resukisu() {
   git -C "$dst" checkout --detach "$RESUKISU_COMMIT"
   [[ "$(git -C "$dst" rev-parse HEAD)" == "$RESUKISU_COMMIT" ]] || die "ReSukiSU checkout mismatch"
 
-  # ReSukiSU's supported source-tree integration model: drivers/kernelsu -> KernelSU/kernel.
   rm -rf "$common/drivers/kernelsu"
   ln -s "$(realpath --relative-to="$common/drivers" "$dst/kernel")" "$common/drivers/kernelsu"
 
@@ -89,7 +105,7 @@ install_resukisu() {
   grep -qF 'source "drivers/kernelsu/Kconfig"' "$kconfig" || sed -i '/^endmenu/i source "drivers/kernelsu/Kconfig"' "$kconfig"
 
   grep -q 'config KSU_SUSFS' "$dst/kernel/Kconfig" || die "pinned ReSukiSU lacks CONFIG_KSU_SUSFS"
-  grep -Rqs 'susfs_is_current_proc_no_su' "$dst/kernel" || die "pinned ReSukiSU lacks SUSFS 2.3 compatibility marker: proc_no_su"
+  grep -Rqs 'susfs_is_current_proc_no_su' "$dst/kernel" || die "pinned ReSukiSU lacks SUSFS 2.3 proc_no_su compatibility"
   grep -Rqs 'is_zygote_next' "$dst/kernel" || die "pinned ReSukiSU lacks zygote_next compatibility"
   log "ReSukiSU source integration prepared"
 }
@@ -103,8 +119,8 @@ install_susfs() {
   [[ -d "$susfs/$SUSFS_FS_DIR" ]] || die "SUSFS fs source missing"
   [[ -d "$susfs/$SUSFS_INCLUDE_DIR" ]] || die "SUSFS include source missing"
 
-  # Kernel-side SUSFS implementation only. Do NOT apply KernelSU/10_enable_susfs_for_ksu.patch:
-  # ReSukiSU owns its own KSU<->SUSFS hook/adaptation layer.
+  # Kernel-side SUSFS only. ReSukiSU owns the KSU<->SUSFS adaptation layer.
+  # DO NOT apply kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch here.
   cp -a "$susfs/$SUSFS_FS_DIR/." "$common/fs/"
   cp -a "$susfs/$SUSFS_INCLUDE_DIR/." "$common/include/linux/"
 
@@ -117,14 +133,13 @@ install_susfs() {
 }
 
 integrate_root() {
-  require_platform
+  verify_base
   require_clean_common
   fetch_deps
   install_resukisu
   install_susfs
-
-  log "root stack prepared; no KPatch-Next code was inserted into common"
-  log "review common diff before committing: git -C '$KERNEL_PLATFORM/common' status --short"
+  log "root stack prepared; KPatch-Next was NOT inserted into common"
+  log "next: bash scripts/apply_fusion_v2_config.sh '$KERNEL_PLATFORM/common'"
 }
 
 verify_source() {
@@ -145,14 +160,12 @@ verify_source() {
   else
     die "cannot prove SUSFS common patch is applied cleanly"
   fi
-
   log "source verification passed"
 }
 
 build_kpatch_next() {
   fetch_deps
   local kp="$DEPS_DIR/kpatch-next"
-  : "${ANDROID_NDK:?set ANDROID_NDK to an Android NDK directory}"
   : "${TARGET_COMPILE:=aarch64-none-elf-}"
   command -v "${TARGET_COMPILE}gcc" >/dev/null 2>&1 || die "missing bare-metal compiler: ${TARGET_COMPILE}gcc"
   command -v cmake >/dev/null 2>&1 || die "cmake not found"
@@ -163,20 +176,19 @@ build_kpatch_next() {
     make clean
     make
   )
+
+  # Build kptools natively for the build host. This binary performs the offline Image patch.
   (
     cd "$kp/tools"
-    rm -rf build/android
-    cmake -S . -B build/android \
-      -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DANDROID_PLATFORM=android-33 \
-      -DANDROID_ABI=arm64-v8a
-    cmake --build build/android
+    rm -rf build/host
+    cmake -S . -B build/host -DCMAKE_BUILD_TYPE=Release
+    cmake --build build/host --parallel
   )
 
   [[ -s "$kp/kernel/kpimg" ]] || die "kpimg build failed"
-  [[ -s "$kp/tools/build/android/kptools" ]] || die "kptools build failed"
-  log "KPatch-Next tools built from pinned commit $KPATCH_NEXT_COMMIT"
+  [[ -x "$kp/tools/build/host/kptools" ]] || die "host kptools build failed"
+  "$kp/tools/build/host/kptools" --version >/dev/null || die "host kptools is not runnable on this build machine"
+  log "KPatch-Next host tools built from pinned commit $KPATCH_NEXT_COMMIT"
 }
 
 patch_image() {
@@ -186,10 +198,11 @@ patch_image() {
 
   fetch_deps
   local kp="$DEPS_DIR/kpatch-next"
-  local kptools="${KPTOOLS:-$kp/tools/build/android/kptools}"
+  local kptools="${KPTOOLS:-$kp/tools/build/host/kptools}"
   local kpimg="${KPIMG:-$kp/kernel/kpimg}"
-  [[ -x "$kptools" ]] || die "kptools not built; run build-kpatch-next or set KPTOOLS"
+  [[ -x "$kptools" ]] || die "host kptools not built; run build-kpatch-next or set KPTOOLS"
   [[ -s "$kpimg" ]] || die "kpimg not built; run build-kpatch-next or set KPIMG"
+  "$kptools" --version >/dev/null || die "configured kptools cannot execute on this host"
 
   "$kptools" -p -i "$input" -k "$kpimg" -o "$output"
   [[ -s "$output" ]] || die "KPatch-Next produced no output Image"
@@ -200,6 +213,7 @@ patch_image() {
 
 case "${1:-}" in
   fetch) fetch_deps ;;
+  verify-base) verify_base ;;
   integrate-root) integrate_root ;;
   verify-source) fetch_deps; verify_source ;;
   build-kpatch-next) build_kpatch_next ;;
