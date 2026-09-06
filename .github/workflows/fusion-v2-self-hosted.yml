@@ -1,0 +1,180 @@
+name: Fusion V2 Self-hosted Persistent OKI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fusion-v2-self-hosted-persistent
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Persistent sun perf build + strict static gate
+    runs-on: self-hosted
+    timeout-minutes: 330
+
+    steps:
+      - name: Verify runner architecture
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = "Linux"
+          test "$(uname -m)" = "x86_64"
+          echo "runner=$(uname -a)"
+          df -h
+
+      - name: Checkout control repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          clean: true
+
+      - name: Ensure build dependencies
+        run: |
+          set -euo pipefail
+          missing=()
+          for cmd in bc bison ccache cmake cpio curl file flex git jq lz4 lzip python3 rsync unzip zip zstd aarch64-linux-gnu-gcc; do
+            command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+          done
+          if ((${#missing[@]})); then
+            echo "Missing commands: ${missing[*]}"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq \
+              bc bison build-essential ca-certificates ccache cmake cpio curl file flex git jq \
+              libelf-dev libncurses-dev libssl-dev lz4 lzip python3 rsync unzip zip zlib1g-dev zstd \
+              gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          fi
+
+      - name: Install repo tool
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin"
+          if ! command -v repo >/dev/null 2>&1; then
+            curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+            chmod +x "$HOME/bin/repo"
+          fi
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare persistent paths
+        run: |
+          set -euo pipefail
+          PERSIST_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/fusion-v2-persistent"
+          mkdir -p \
+            "$PERSIST_ROOT/oki" \
+            "$PERSIST_ROOT/bazel-output-user-root" \
+            "$PERSIST_ROOT/bazel-disk" \
+            "$PERSIST_ROOT/bazel-repository" \
+            "$PERSIST_ROOT/fusion-work"
+          {
+            echo "FUSION_PERSIST_ROOT=$PERSIST_ROOT"
+            echo "OKI_WORKSPACE=$PERSIST_ROOT/oki"
+            echo "FUSION_WORK_DIR=$PERSIST_ROOT/fusion-work"
+            echo "BAZEL_OUTPUT_USER_ROOT=$PERSIST_ROOT/bazel-output-user-root"
+            echo "BAZEL_DISK_CACHE=$PERSIST_ROOT/bazel-disk"
+            echo "BAZEL_REPOSITORY_CACHE=$PERSIST_ROOT/bazel-repository"
+          } >> "$GITHUB_ENV"
+          du -sh "$PERSIST_ROOT"/* 2>/dev/null || true
+
+      - name: Shell syntax gate
+        run: |
+          set -euo pipefail
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/build_fusion_v2_oki.sh
+          bash -n scripts/apply_fusion_v2_standard_config.sh
+          bash -n scripts/verify_fusion_v2_image.sh
+          bash -n scripts/verify_fusion_v2_release.sh
+
+      - name: Build complete Fusion V2 OKI
+        env:
+          SYNC_JOBS: '8'
+          TARGET_COMPILE: aarch64-linux-gnu-
+        run: |
+          set -euo pipefail
+          export EXTRA_KBUILD_ARGS="--cache_dir=$BAZEL_OUTPUT_USER_ROOT --disk_cache=$BAZEL_DISK_CACHE --repository_cache=$BAZEL_REPOSITORY_CACHE"
+          START=$(date +%s)
+          bash scripts/build_fusion_v2_oki.sh all
+          END=$(date +%s)
+          echo "elapsed_seconds=$((END-START))" | tee "$OKI_WORKSPACE/out/dist/self-hosted-timing.txt"
+
+      - name: Assemble static candidate evidence
+        if: success()
+        run: |
+          set -euo pipefail
+          rm -rf candidate
+          mkdir -p candidate
+          DIST="$OKI_WORKSPACE/out/dist"
+          test -s "$DIST/Image"
+          test -s "$DIST/Image.kpatch-next"
+          test -s "$DIST/static-gate.txt"
+
+          cp "$DIST/Image" candidate/Image.raw
+          cp "$DIST/Image.kpatch-next" candidate/Image
+          cp "$DIST/Image.kpatch-next.kpatch-info.txt" candidate/ 2>/dev/null || true
+          cp "$DIST/Image.kpatch-next.sha256" candidate/ 2>/dev/null || true
+          cp "$DIST/Image.sha256" candidate/ 2>/dev/null || true
+          cp "$DIST/Image.version.txt" candidate/ 2>/dev/null || true
+          cp "$DIST/fusion-v2-resolved.config" candidate/ 2>/dev/null || true
+          cp "$DIST/manifest-pinned.xml" candidate/ 2>/dev/null || true
+          cp "$DIST/manifest-pinned.xml.sha256" candidate/ 2>/dev/null || true
+          cp "$DIST/fusion-common.commit" candidate/ 2>/dev/null || true
+          cp "$DIST/msm-kernel.commit" candidate/ 2>/dev/null || true
+          cp "$DIST/static-gate.txt" candidate/
+          cp "$DIST/self-hosted-timing.txt" candidate/ 2>/dev/null || true
+          cp configs/fusion_v2_sources.lock candidate/
+          cp configs/fusion_v2_root.fragment candidate/
+          cp configs/fusion_v2_standard.fragment candidate/
+          cp configs/fusion_v2_release.policy candidate/
+
+          if test -f "$DIST/build.log"; then
+            gzip -9 -c "$DIST/build.log" > candidate/build.log.gz
+          fi
+
+          {
+            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "persistent_oki_workspace=$OKI_WORKSPACE"
+            echo "raw_image_sha256=$(sha256sum candidate/Image.raw | awk '{print $1}')"
+            echo "patched_image_sha256=$(sha256sum candidate/Image | awk '{print $1}')"
+            echo "raw_image_size=$(stat -c '%s' candidate/Image.raw)"
+            echo "patched_image_size=$(stat -c '%s' candidate/Image)"
+          } > candidate/CI_PROVENANCE.txt
+
+          sha256sum candidate/* > candidate/SHA256SUMS.txt
+
+      - name: Upload Fusion V2 self-hosted candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v2-self-hosted-candidate-${{ github.run_number }}
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Assemble self-hosted failure evidence
+        if: failure()
+        run: |
+          set -euo pipefail
+          rm -rf failure-evidence
+          mkdir -p failure-evidence
+          cp "$OKI_WORKSPACE"/build_fusion_v2_*.log failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/out/dist/*.txt failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/out/dist/*.config failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/manifest-pinned.xml failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/manifest-pinned.xml.sha256 failure-evidence/ 2>/dev/null || true
+          {
+            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "persistent_oki_workspace=$OKI_WORKSPACE"
+          } > failure-evidence/CI_FAILURE_PROVENANCE.txt
+
+      - name: Upload self-hosted failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v2-self-hosted-failure-${{ github.run_number }}
+          path: failure-evidence/
+          if-no-files-found: error
+          retention-days: 7
