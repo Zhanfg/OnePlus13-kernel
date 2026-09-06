@@ -1,0 +1,26 @@
+# Fusion V2 standard feature set
+
+# Network compatibility retained from the first audited GKI.
+CONFIG_IP_NF_TARGET_TTL=y
+CONFIG_IP6_NF_TARGET_HL=y
+CONFIG_IP6_NF_MATCH_HL=y
+CONFIG_NETFILTER_XT_TARGET_HL=y
+
+# Container / Termux / compatibility features retained from the second GKI.
+CONFIG_USER_NS=y
+CONFIG_PID_NS=y
+CONFIG_IPC_NS=y
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_NTSYNC=y
+
+# Keep ADIOS available, but do not force it as the default scheduler in Standard.
+CONFIG_MQ_IOSCHED_ADIOS=y
+# CONFIG_MQ_IOSCHED_DEFAULT_ADIOS is not set
+
+# Keep the standard security mechanism unless a dedicated compatibility test proves otherwise.
+CONFIG_SECURITY_SAFESETID=y
+
+# Deliberately excluded from Standard first release:
+# CONFIG_BBG is not set
+# CONFIG_DRM_LINDROID_EVDI is not set
