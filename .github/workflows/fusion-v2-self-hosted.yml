@@ -65,7 +65,8 @@ jobs:
             "$PERSIST_ROOT/oki" \
             "$PERSIST_ROOT/bazel-output-user-root" \
             "$PERSIST_ROOT/bazel-disk" \
-            "$PERSIST_ROOT/bazel-repository"
+            "$PERSIST_ROOT/bazel-repository" \
+            "$PERSIST_ROOT/fusion-work"
           {
             echo "FUSION_PERSIST_ROOT=$PERSIST_ROOT"
             echo "OKI_WORKSPACE=$PERSIST_ROOT/oki"
@@ -89,12 +90,9 @@ jobs:
         env:
           SYNC_JOBS: '8'
           TARGET_COMPILE: aarch64-linux-gnu-
-          EXTRA_KBUILD_ARGS: >-
-            --cache_dir=${{ env.BAZEL_OUTPUT_USER_ROOT }}
-            --disk_cache=${{ env.BAZEL_DISK_CACHE }}
-            --repository_cache=${{ env.BAZEL_REPOSITORY_CACHE }}
         run: |
           set -euo pipefail
+          export EXTRA_KBUILD_ARGS="--cache_dir=$BAZEL_OUTPUT_USER_ROOT --disk_cache=$BAZEL_DISK_CACHE --repository_cache=$BAZEL_REPOSITORY_CACHE"
           START=$(date +%s)
           bash scripts/build_fusion_v2_oki.sh all
           END=$(date +%s)
@@ -155,16 +153,28 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Assemble self-hosted failure evidence
+        if: failure()
+        run: |
+          set -euo pipefail
+          rm -rf failure-evidence
+          mkdir -p failure-evidence
+          cp "$OKI_WORKSPACE"/build_fusion_v2_*.log failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/out/dist/*.txt failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/out/dist/*.config failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/manifest-pinned.xml failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE"/manifest-pinned.xml.sha256 failure-evidence/ 2>/dev/null || true
+          {
+            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "persistent_oki_workspace=$OKI_WORKSPACE"
+          } > failure-evidence/CI_FAILURE_PROVENANCE.txt
+
       - name: Upload self-hosted failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: fusion-v2-self-hosted-failure-${{ github.run_number }}
-          path: |
-            ${{ env.OKI_WORKSPACE }}/build_fusion_v2_*.log
-            ${{ env.OKI_WORKSPACE }}/out/dist/*.txt
-            ${{ env.OKI_WORKSPACE }}/out/dist/*.config
-            ${{ env.OKI_WORKSPACE }}/manifest-pinned.xml
-            ${{ env.OKI_WORKSPACE }}/manifest-pinned.xml.sha256
-          if-no-files-found: ignore
+          path: failure-evidence/
+          if-no-files-found: error
           retention-days: 7
