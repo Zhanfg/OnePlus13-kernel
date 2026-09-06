@@ -1,10 +1,11 @@
 # Fusion V2 pinned upstreams
 # Release builds use exact immutable commits. The complete OnePlus OKI platform is pinned
-# separately in configs/oneplus_13_16.0.9.401.lock. After that official platform is verified,
-# kernel_platform/common is switched to this reviewed Fusion common commit before integration.
+# separately in configs/oneplus_13_16.0.9.401.lock. Fusion common is now a minimal branch
+# created directly from the official OnePlus common commit, not the historical 8k+ commit fork.
 
 FUSION_COMMON_REPO=https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750.git
-FUSION_COMMON_COMMIT=a187d340088dc23dc5bfaadf34b4475af3ea9297
+# OnePlus e1b346... + isolated ADIOS 3.2.0 port; no historical custom-common divergence.
+FUSION_COMMON_COMMIT=7fd47f1a77f06fbd5d0d8b84096d7942b456873a
 
 RESUKISU_REPO=https://github.com/ReSukiSU/ReSukiSU.git
 # Matches the ReSukiSU generation identified in the qdykernel binary audit.
@@ -22,15 +23,16 @@ KPATCH_NEXT_REPO=https://github.com/KernelSU-Next/KPatch-Next.git
 # Includes the 2026-08-30 stop_machine fix.
 KPATCH_NEXT_COMMIT=456744b29efb9989445463ab29e368fa59a103c4
 
-# Clean upstream NTSYNC source. Do not use community variants which add delayed chmod/chcon
-# logic inside the driver. c301e1fe is the commit that enabled the complete upstream driver.
-NTSYNC_REPO=https://github.com/torvalds/linux.git
-NTSYNC_COMMIT=c301e1fefc2d6c83a2beb47e9cdd7b59a90b0067
+# NTSYNC is extracted as a minimal, reproducible backport from the previously audited 6.6 tree.
+# The source files are verified by Git blob SHA before they are accepted into the official base.
+NTSYNC_REFERENCE_REPO=https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750.git
+NTSYNC_REFERENCE_COMMIT=a187d340088dc23dc5bfaadf34b4475af3ea9297
 NTSYNC_DRIVER_PATH=drivers/misc/ntsync.c
 NTSYNC_UAPI_PATH=include/uapi/linux/ntsync.h
+NTSYNC_DRIVER_BLOB=d279267cc75b1c29dd02ef99074e21a96884f5c5
+NTSYNC_UAPI_BLOB=6d06793512b150a80018618b698537a0e3793e54
 
-# ADIOS reference only. Upstream stable 3.2.0 has no Linux 6.6 patch; a dedicated 6.6
-# backport must be created and reviewed before CONFIG_MQ_IOSCHED_ADIOS is enabled.
-ADIOS_REPO=https://github.com/firelzrd/adios.git
-ADIOS_COMMIT=08bf078aac99075a0bef73c2b2497574a82e4c41
-ADIOS_6_6_STATUS=backport-required
+# ADIOS 3.2.0 was ported as an isolated commit on top of the official OnePlus common.
+ADIOS_SOURCE_COMMIT=21a2f5acd267b59caf06620a38df69aef9b6483e
+ADIOS_FUSION_COMMIT=7fd47f1a77f06fbd5d0d8b84096d7942b456873a
+ADIOS_VERSION=3.2.0
