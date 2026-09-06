@@ -1,13 +1,17 @@
 # Fusion V2 pinned upstreams
 # Generated/updated deliberately. Do not replace SHAs with moving branches in release builds.
 
+# Custom common carries the previously audited scheduler/I/O/compatibility work.
+FUSION_COMMON_REPO=https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750.git
+FUSION_COMMON_COMMIT=a187d340088dc23dc5bfaadf34b4475af3ea9297
+
 RESUKISU_REPO=https://github.com/ReSukiSU/ReSukiSU.git
 # Matches the ReSukiSU generation identified in the qdykernel binary audit.
 RESUKISU_COMMIT=f7829ddf548a18b851d653feb76b4a569b8fd2a4
 
 SUSFS_REPO=https://gitlab.com/simonpunk/susfs4ksu.git
 SUSFS_BRANCH=gki-android15-6.6
-# Exact "Bump version to 2.3.0" milestone. Chosen instead of later moving branch head.
+# Exact "Bump version to 2.3.0" milestone.
 SUSFS_COMMIT=eba2a88a5ba303e3d79d08e0717b956e9cf784a1
 
 KPATCH_NEXT_REPO=https://github.com/KernelSU-Next/KPatch-Next.git
