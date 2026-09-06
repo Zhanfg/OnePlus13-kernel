@@ -1,6 +1,10 @@
 # Fusion V2 pinned upstreams
-# Release builds use exact immutable commits. OnePlus build base is pinned separately in
-# configs/oneplus_13_16.0.9.401.lock; historical custom-common commits are NOT build bases.
+# Release builds use exact immutable commits. The complete OnePlus OKI platform is pinned
+# separately in configs/oneplus_13_16.0.9.401.lock. After that official platform is verified,
+# kernel_platform/common is switched to this reviewed Fusion common commit before integration.
+
+FUSION_COMMON_REPO=https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750.git
+FUSION_COMMON_COMMIT=a187d340088dc23dc5bfaadf34b4475af3ea9297
 
 RESUKISU_REPO=https://github.com/ReSukiSU/ReSukiSU.git
 # Matches the ReSukiSU generation identified in the qdykernel binary audit.
