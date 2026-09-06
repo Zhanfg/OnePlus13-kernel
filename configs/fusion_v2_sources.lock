@@ -1,0 +1,19 @@
+# Fusion V2 pinned upstreams
+# Generated/updated deliberately. Do not replace SHAs with moving branches in release builds.
+
+RESUKISU_REPO=https://github.com/ReSukiSU/ReSukiSU.git
+# Matches the ReSukiSU generation identified in the qdykernel binary audit.
+RESUKISU_COMMIT=f7829ddf548a18b851d653feb76b4a569b8fd2a4
+
+SUSFS_REPO=https://gitlab.com/simonpunk/susfs4ksu.git
+SUSFS_BRANCH=gki-android15-6.6
+# Exact "Bump version to 2.3.0" milestone. Chosen instead of later moving branch head.
+SUSFS_COMMIT=eba2a88a5ba303e3d79d08e0717b956e9cf784a1
+
+KPATCH_NEXT_REPO=https://github.com/KernelSU-Next/KPatch-Next.git
+# Includes the 2026-08-30 stop_machine fix.
+KPATCH_NEXT_COMMIT=456744b29efb9989445463ab29e368fa59a103c4
+
+SUSFS_KERNEL_PATCH=kernel_patches/50_add_susfs_in_gki-android15-6.6.patch
+SUSFS_FS_DIR=kernel_patches/fs
+SUSFS_INCLUDE_DIR=kernel_patches/include/linux
