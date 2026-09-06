@@ -1,0 +1,12 @@
+# Fusion V2 release policy
+ROOT_CORE=ReSukiSU
+SUSFS_TARGET=2.3.x
+KPATCH_NEXT_REQUIRED=1
+KPM_INTERACTIVE_TOGGLE=0
+KPATCH_NEXT_STAGE=post-build-image
+
+# A release candidate is only valid when the final packaged Image is the
+# KPatch-Next patched output and its provenance files are present.
+REQUIRE_KPATCH_INFO=1
+REQUIRE_PRE_PATCH_SHA256=1
+REQUIRE_POST_PATCH_SHA256=1
