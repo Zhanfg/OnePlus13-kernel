@@ -9,7 +9,7 @@
 | 角色 | 仓库 / 分支 | 说明 |
 |---|---|---|
 | 项目控制 | `Zhanfg/OnePlus13-kernel:main` | 构建、AK3、测试、发布和文档 |
-| 自定义 common | `Zhanfg/android_kernel_common_oneplus_sm8750:6.6-final` | common 自定义补丁和上游移植 |
+| 自定义 common | `ZhanfgBuild/android_kernel_common_oneplus_sm8750:6.6-final` | common 自定义补丁和上游移植 |
 | 官方 manifest | `OnePlusOSS/kernel_manifest:oneplus/sm8750` | 完整 OKI 入口，使用 `oneplus_13_b.xml` |
 | 官方 common | `OnePlusOSS/android_kernel_common_oneplus_sm8750` | Android common 内核 |
 | 官方 msm-kernel | `OnePlusOSS/android_kernel_oneplus_sm8750` | Qualcomm / OnePlus 平台代码 |
@@ -54,7 +54,7 @@ Boot: not verified
 ### 自定义 common
 
 ```text
-Repository: Zhanfg/android_kernel_common_oneplus_sm8750
+Repository: ZhanfgBuild/android_kernel_common_oneplus_sm8750
 Branch: 6.6-final
 Kernel: Linux 6.6.126
 ```
@@ -75,7 +75,7 @@ e1b346b6b4f4096eb342ae3684838a942fd6f6c4
 固定同步候选：
 
 ```text
-PR: Zhanfg/android_kernel_common_oneplus_sm8750#6
+PR: ZhanfgBuild/android_kernel_common_oneplus_sm8750#6
 branch: sync/official-16.0.9.401-e1b346b6b
 state: Draft / conflicts / not merged
 ```
@@ -283,8 +283,8 @@ repo manifest -r -o manifest-pinned.xml
 - [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)：工程状态和优先级
 - [`docs/UPSTREAM.md`](docs/UPSTREAM.md)：官方上游和同步流程
 - [`releases/BASELINE_CURRENT.txt`](releases/BASELINE_CURRENT.txt)：当前脱敏基线
-- [common 同步 PR #6](https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750/pull/6)
-- [common 第一轮规则 PR #11](https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750/pull/11)
+- [common 同步 PR #6](https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750/pull/6)
+- [common 第一轮规则 PR #11](https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750/pull/11)
 
 ## 许可证
 

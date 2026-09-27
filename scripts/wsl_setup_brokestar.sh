@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT=/home/axymorrsen/op13-kernel
 SRC="${ROOT}/brokestar-6.6"
 # 开发用 fork；upstream 仅同步破星，禁止 push 到 upstream
-FORK=https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750.git
+FORK=https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750.git
 UPSTREAM=https://github.com/brokestar233/android_kernel_common_oneplus_sm8750.git
 BRANCH=6.6-final
 
@@ -78,7 +78,7 @@ fi
 # update project baseline pointer
 cat > /mnt/d/OnePlus13-kernel/releases/BASELINE_CURRENT.txt << EOF
 ACTIVE_BASELINE=破星 brokestar（经 fork 后本地开发）
-FORK=https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750
+FORK=https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750
 UPSTREAM=https://github.com/brokestar233/android_kernel_common_oneplus_sm8750
 BRANCH_PRIMARY=$BRANCH
 BRANCH_DEV=dev（可跟进修复）

@@ -4,7 +4,7 @@
 
 | 项 | 决定 |
 |----|------|
-| 源码 | **破星** upstream；开发在 **fork** `Zhanfg/android_kernel_common_oneplus_sm8750` |
+| 源码 | **破星** upstream；开发在 **fork** `ZhanfgBuild/android_kernel_common_oneplus_sm8750` |
 | 分支 | 主用 **`6.6-final`（6.6.126）**；`dev` 仅作 zram 等热修参考，不默认整支跟 |
 | 推送 | 只推 fork；不同步改动到破星 upstream |
 | 产物 | 仅 **GKI `Image` + 标准 AK3**（与能刷包一致） |
@@ -56,7 +56,7 @@
 ## 本地路径
 
 - 源码：`/home/axymorrsen/op13-kernel/brokestar-6.6`
-- fork：https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750
+- fork：https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750
 - 成品：`D:\OnePlus13-kernel\releases\`
 - 参考 AK3：`releases/AK3_6_6_144_..._comm.zip`
 - 救砖：`releases/restore/boot.img`

@@ -19,7 +19,7 @@
 
 | 项 | 值 |
 |----|-----|
-| **开发 fork** | https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750 |
+| **开发 fork** | https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750 |
 | upstream（只读同步） | https://github.com/brokestar233/android_kernel_common_oneplus_sm8750 |
 | 分支 | `6.6-final`（主）/ `dev` 跟进 |
 | 版本 | **6.6.126** |

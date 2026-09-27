@@ -36,7 +36,7 @@ repo manifest -r -o manifest-pinned.xml
 ## 3. 自定义 common 关系
 
 ```text
-Local: Zhanfg/android_kernel_common_oneplus_sm8750:6.6-final
+Local: ZhanfgBuild/android_kernel_common_oneplus_sm8750:6.6-final
 Local kernel: Linux 6.6.126
 Official common: e1b346b6b4f4096eb342ae3684838a942fd6f6c4
 Official kernel: Linux 6.6.118
@@ -167,4 +167,4 @@ HMBIRD 与官方 SCX 占用相同策略编号并修改同一批 fork、tick、pi
 - `https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750`
 - `https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750`
 - `https://github.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750`
-- `https://github.com/Zhanfg/android_kernel_common_oneplus_sm8750/pull/6`
+- `https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750/pull/6`

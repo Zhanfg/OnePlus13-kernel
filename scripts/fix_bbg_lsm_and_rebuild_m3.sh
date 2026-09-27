@@ -159,7 +159,7 @@ cat > "${OUT_WIN}/BUILD_ALL_NOTES.txt" << EOF
 破星全阶段产物（编译机已完成，待真机验证）
 ==========================================
 日期: $(date -Is)
-源码: fork Zhanfg/android_kernel_common_oneplus_sm8750 @ 6.6-final + 本地集成
+源码: fork ZhanfgBuild/android_kernel_common_oneplus_sm8750 @ 6.6-final + 本地集成
 工具链: Ubuntu clang 21 + LLD
 
 建议刷机顺序（明早）:

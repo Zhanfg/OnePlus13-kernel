@@ -7,7 +7,7 @@
 | 角色 | 仓库 / 分支 | 用途 |
 |---|---|---|
 | 项目控制仓库 | `Zhanfg/OnePlus13-kernel:main` | 构建、AK3、测试、发布和文档 |
-| 自定义 common | `Zhanfg/android_kernel_common_oneplus_sm8750:6.6-final` | common 自定义补丁和上游移植 |
+| 自定义 common | `ZhanfgBuild/android_kernel_common_oneplus_sm8750:6.6-final` | common 自定义补丁和上游移植 |
 | 官方 manifest | `OnePlusOSS/kernel_manifest:oneplus/sm8750` | 完整 OKI 入口，文件 `oneplus_13_b.xml` |
 
 目标设备：OnePlus 13 国行 `PJZ110`，代号 `sun`，SoC `SM8750`，系统基线 `PJZ110_16.0.9.401(CN01)`。
@@ -35,7 +35,7 @@
 
 ### 自定义 common
 
-- 仓库：`Zhanfg/android_kernel_common_oneplus_sm8750`
+- 仓库：`ZhanfgBuild/android_kernel_common_oneplus_sm8750`
 - 分支：`6.6-final`
 - Linux 6.6.126
 - 只对应 `kernel_platform/common`，不等于完整 OKI 工程
