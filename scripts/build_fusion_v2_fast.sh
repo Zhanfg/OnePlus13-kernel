@@ -71,7 +71,7 @@ configure() {
       sha256sum "$COMMON/arch/arm64/configs/gki_defconfig"
       sha256sum "$ROOT_DIR/configs/fusion_v2_root.fragment"
       sha256sum "$ROOT_DIR/configs/fusion_v2_standard.fragment"
-      printf '%s\n' 'fast:lto=none' 'fast:debug_info=none'
+      printf '%s\n' 'fast:lto=none' 'fast:debug_info=none' 'fast:werror=off'
     } | sha256sum | awk '{print $1}'
   )"
   [[ -f "$OUT/.fusion-fast-config-fingerprint" ]] && old_fp="$(cat "$OUT/.fusion-fast-config-fingerprint")"
@@ -93,13 +93,15 @@ configure() {
       -d LTO_CLANG_FULL \
       -e DEBUG_INFO_NONE \
       -d DEBUG_INFO_DWARF5 \
-      -d DEBUG_INFO_BTF
+      -d DEBUG_INFO_BTF \
+      -d WERROR
     make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
     printf '%s\n' "$config_fp" > "$OUT/.fusion-fast-config-fingerprint"
   fi
 
   grep -qx 'CONFIG_LTO_NONE=y' "$OUT/.config" || die "fast config failed to disable LTO"
   grep -qx 'CONFIG_DEBUG_INFO_NONE=y' "$OUT/.config" || die "fast config failed to disable debug info"
+  grep -qx '# CONFIG_WERROR is not set' "$OUT/.config" || die "fast config failed to disable WERROR"
 
   while IFS= read -r line; do
     [[ "$line" =~ ^CONFIG_[A-Za-z0-9_]+=[ym]$ || "$line" =~ ^#\ CONFIG_[A-Za-z0-9_]+\ is\ not\ set$ ]] || continue
@@ -150,6 +152,7 @@ verify_image() {
     echo "release_equivalent=false"
     echo "fast_lto=none"
     echo "fast_debug_info=none"
+    echo "fast_werror=off"
     echo "kmi_release_gate=deferred-to-full-oki"
   } > "$DIST/FAST_PROVENANCE.txt"
   timer_end verify
