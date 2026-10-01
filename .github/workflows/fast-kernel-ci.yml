@@ -44,6 +44,11 @@ jobs:
           command -v clang >/dev/null || missing+=(clang)
           command -v flex >/dev/null || missing+=(flex)
           command -v ld.lld >/dev/null || missing+=(lld)
+          if ! command -v llvm-readelf >/dev/null ||
+             ! command -v llvm-nm >/dev/null ||
+             ! command -v llvm-objcopy >/dev/null; then
+            missing+=(llvm)
+          fi
           if ((${#missing[@]})); then
             sudo apt-get update -qq
             sudo apt-get install -y -qq "${missing[@]}" libelf-dev libssl-dev
