@@ -58,7 +58,11 @@ configure() {
   timer_begin configure
   rm -rf "$OUT"
   mkdir -p "$OUT" "$DIST" "$CCACHE_DIR"
-  make -C "$COMMON" O="$OUT" ARCH=arm64 gki_defconfig
+  # OnePlus' %_defconfig hook calls a parent-tree check_file.sh that only exists
+  # in the complete OKI checkout. Fast Lane does not need that wrapper: seed the
+  # exact pinned GKI defconfig directly, then let Kconfig resolve dependencies.
+  cp "$COMMON/arch/arm64/configs/gki_defconfig" "$OUT/.config"
+  make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
   bash "$COMMON/scripts/kconfig/merge_config.sh" -m -O "$OUT"     "$OUT/.config"     "$ROOT_DIR/configs/fusion_v2_root.fragment"     "$ROOT_DIR/configs/fusion_v2_standard.fragment"
   # Fast CI validates source integration and compilation, not release LTO/BTF.
   "$COMMON/scripts/config" --file "$OUT/.config" \
