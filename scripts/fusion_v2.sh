@@ -46,20 +46,26 @@ clone_pinned() {
     log "reuse $name cache: $dest"
   else
     rm -rf "$dest"
-    git clone --filter=blob:none --no-checkout "$repo" "$dest"
+    mkdir -p "$dest"
+    git -C "$dest" init -q
+    git -C "$dest" remote add origin "$repo"
   fi
-  git -C "$dest" fetch --force --depth=1 origin "$commit"
-  git -C "$dest" checkout --detach "$commit"
+  git -C "$dest" fetch --force --no-tags --filter=blob:none --depth=1 origin "$commit"
+  git -C "$dest" checkout --detach -q FETCH_HEAD
   local actual
   actual="$(git -C "$dest" rev-parse HEAD)"
   [[ "$actual" == "$commit" ]] || die "$name pin mismatch: expected $commit got $actual"
   log "$name pinned at $actual"
 }
 
-fetch_deps() {
+fetch_root_deps() {
   mkdir -p "$DEPS_DIR"
   clone_pinned "ReSukiSU" "$RESUKISU_REPO" "$RESUKISU_COMMIT" "$DEPS_DIR/resukisu"
   clone_pinned "SUSFS" "$SUSFS_REPO" "$SUSFS_COMMIT" "$DEPS_DIR/susfs"
+}
+
+fetch_deps() {
+  fetch_root_deps
   clone_pinned "KPatch-Next" "$KPATCH_NEXT_REPO" "$KPATCH_NEXT_COMMIT" "$DEPS_DIR/kpatch-next"
 }
 
@@ -116,9 +122,9 @@ install_resukisu() {
 
   [[ -f "$makefile" && -f "$kconfig" ]] || die "common drivers Makefile/Kconfig missing"
   rm -rf "$dst"
-  git clone --no-checkout "$RESUKISU_REPO" "$dst"
-  git -C "$dst" fetch --force --depth=1 origin "$RESUKISU_COMMIT"
-  git -C "$dst" checkout --detach "$RESUKISU_COMMIT"
+  [[ -d "$DEPS_DIR/resukisu/.git" ]] || die "ReSukiSU dependency cache missing"
+  git clone -q --shared --no-checkout "$DEPS_DIR/resukisu" "$dst"
+  git -C "$dst" checkout --detach -q "$RESUKISU_COMMIT"
   [[ "$(git -C "$dst" rev-parse HEAD)" == "$RESUKISU_COMMIT" ]] || die "ReSukiSU checkout mismatch"
 
   rm -rf "$common/drivers/kernelsu"
@@ -158,7 +164,7 @@ install_susfs() {
 integrate_root_fast() {
   verify_fast_base
   require_clean_common
-  fetch_deps
+  fetch_root_deps
   install_resukisu
   install_susfs
   log "fast root stack prepared against pinned Fusion common"
@@ -167,7 +173,7 @@ integrate_root_fast() {
 integrate_root() {
   verify_base
   require_clean_common
-  fetch_deps
+  fetch_root_deps
   install_resukisu
   install_susfs
   log "root stack prepared; KPatch-Next was NOT inserted into common"
@@ -265,8 +271,8 @@ case "${1:-}" in
   verify-base) verify_base ;;
   integrate-root) integrate_root ;;
   integrate-root-fast) integrate_root_fast ;;
-  verify-source) fetch_deps; verify_source ;;
-  verify-source-fast) fetch_deps; verify_source_fast ;;
+  verify-source) fetch_root_deps; verify_source ;;
+  verify-source-fast) fetch_root_deps; verify_source_fast ;;
   build-kpatch-next) build_kpatch_next ;;
   patch-image) shift; patch_image "$@" ;;
   -h|--help|help|'') usage ;;
