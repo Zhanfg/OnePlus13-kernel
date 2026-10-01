@@ -102,11 +102,11 @@ configure() {
   grep -qx 'CONFIG_DEBUG_INFO_NONE=y' "$OUT/.config" || die "fast config failed to disable debug info"
 
   while IFS= read -r line; do
-    [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
+    [[ "$line" =~ ^CONFIG_[A-Za-z0-9_]+=[ym]$ || "$line" =~ ^#\ CONFIG_[A-Za-z0-9_]+\ is\ not\ set$ ]] || continue
     grep -qxF "$line" "$OUT/.config" || die "resolved fast config mismatch: $line"
   done < "$ROOT_DIR/configs/fusion_v2_root.fragment"
   while IFS= read -r line; do
-    [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
+    [[ "$line" =~ ^CONFIG_[A-Za-z0-9_]+=[ym]$ || "$line" =~ ^#\ CONFIG_[A-Za-z0-9_]+\ is\ not\ set$ ]] || continue
     grep -qxF "$line" "$OUT/.config" || die "resolved fast config mismatch: $line"
   done < "$ROOT_DIR/configs/fusion_v2_standard.fragment"
 
