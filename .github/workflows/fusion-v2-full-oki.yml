@@ -64,7 +64,7 @@ jobs:
           path: |
             .fusion-cache/bazel-disk
             .fusion-cache/bazel-repository
-          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
+          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}
           restore-keys: |
             fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock') }}-
             fusion-v2-bazel-${{ runner.os }}-
@@ -90,7 +90,8 @@ jobs:
       - name: Build complete Fusion V2 OKI
         env:
           OKI_WORKSPACE: ${{ github.workspace }}/oki
-          SYNC_JOBS: '4'
+          SYNC_JOBS: '8'
+          REPO_DEPTH: '1'
           TARGET_COMPILE: aarch64-linux-gnu-
           FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
           ONEPLUS_BASE_LOCK: ${{ github.workspace }}/configs/oneplus_13_16.0.10.501.lock
@@ -104,6 +105,14 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/build_fusion_v2_oki.sh all
+
+      - name: Measure source-cache candidates
+        if: always()
+        run: |
+          du -sh oki/.repo/project-objects 2>/dev/null || true
+          du -sh oki/.repo/projects 2>/dev/null || true
+          du -sh oki/kernel_platform 2>/dev/null || true
+          du -sh oki 2>/dev/null || true
 
       - name: Prune persistent Bazel caches
         if: always()
@@ -150,7 +159,7 @@ jobs:
           path: |
             .fusion-cache/bazel-disk
             .fusion-cache/bazel-repository
-          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
+          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}
 
       - name: Assemble static candidate evidence
         if: success()
