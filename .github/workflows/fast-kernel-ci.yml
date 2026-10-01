@@ -68,15 +68,18 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .fast-oki/out
-          key: fusion-fast-kbuild-v1
+          key: fusion-fast-kbuild-${{ hashFiles('configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.run_id }}
+          restore-keys: |
+            fusion-fast-kbuild-${{ hashFiles('configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-
 
       - name: Restore compiler cache
         id: ccache
         uses: actions/cache/restore@v4
         with:
           path: .fusion-cache/ccache
-          key: fusion-fast-ccache-${{ runner.os }}-clang-v3
+          key: fusion-fast-ccache-${{ runner.os }}-clang18-${{ github.run_id }}
           restore-keys: |
+            fusion-fast-ccache-${{ runner.os }}-clang18-
             fusion-fast-ccache-${{ runner.os }}-clang-
 
       - name: Restore pinned dependency clones
@@ -95,7 +98,7 @@ jobs:
         run: bash scripts/build_fusion_v2_fast.sh
 
       - name: Trim incremental Kbuild seed
-        if: success()
+        if: always()
         run: |
           rm -f .fast-oki/out/vmlinux
           rm -f .fast-oki/out/System.map
@@ -104,11 +107,11 @@ jobs:
           du -sh .fast-oki/out || true
 
       - name: Save incremental Kbuild seed
-        if: success() && steps.kbuild-seed.outputs.cache-hit != 'true'
+        if: always() && hashFiles('.fast-oki/out/.config') != ''
         uses: actions/cache/save@v4
         with:
           path: .fast-oki/out
-          key: fusion-fast-kbuild-v1
+          key: fusion-fast-kbuild-${{ hashFiles('configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.run_id }}
 
       - name: Save Fusion common seed
         if: always() && steps.common-cache.outputs.cache-hit != 'true'
@@ -118,11 +121,11 @@ jobs:
           key: fusion-fast-common-v1
 
       - name: Save compiler cache
-        if: always() && steps.ccache.outputs.cache-hit != 'true'
+        if: always() && hashFiles('.fusion-cache/ccache/**') != ''
         uses: actions/cache/save@v4
         with:
           path: .fusion-cache/ccache
-          key: fusion-fast-ccache-${{ runner.os }}-clang-v3
+          key: fusion-fast-ccache-${{ runner.os }}-clang18-${{ github.run_id }}
 
       - name: Save dependency clones
         if: always() && steps.deps.outputs.cache-hit != 'true'
