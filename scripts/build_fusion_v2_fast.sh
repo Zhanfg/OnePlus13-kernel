@@ -56,23 +56,39 @@ integrate() {
 
 configure() {
   timer_begin configure
-  rm -rf "$OUT"
   mkdir -p "$OUT" "$DIST" "$CCACHE_DIR"
-  # OnePlus' %_defconfig hook calls a parent-tree check_file.sh that only exists
+  local config_fp old_fp=""
+  config_fp="$(
+    {
+      sha256sum "$COMMON/arch/arm64/configs/gki_defconfig"
+      sha256sum "$ROOT_DIR/configs/fusion_v2_root.fragment"
+      sha256sum "$ROOT_DIR/configs/fusion_v2_standard.fragment"
+      printf '%s\n' 'fast:lto=none' 'fast:debug_info=none'
+    } | sha256sum | awk '{print $1}'
+  )"
+  [[ -f "$OUT/.fusion-fast-config-fingerprint" ]] && old_fp="$(cat "$OUT/.fusion-fast-config-fingerprint")"
+
+  if [[ "$config_fp" == "$old_fp" && -f "$OUT/.config" ]]; then
+    log "fast config fingerprint hit; preserving incremental object graph"
+  else
+    log "fast config fingerprint miss; regenerating configuration"
+    # OnePlus' %_defconfig hook calls a parent-tree check_file.sh that only exists
   # in the complete OKI checkout. Fast Lane does not need that wrapper: seed the
   # exact pinned GKI defconfig directly, then let Kconfig resolve dependencies.
-  cp "$COMMON/arch/arm64/configs/gki_defconfig" "$OUT/.config"
-  make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
-  bash "$COMMON/scripts/kconfig/merge_config.sh" -m -O "$OUT"     "$OUT/.config"     "$ROOT_DIR/configs/fusion_v2_root.fragment"     "$ROOT_DIR/configs/fusion_v2_standard.fragment"
+    cp "$COMMON/arch/arm64/configs/gki_defconfig" "$OUT/.config"
+    make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
+    bash "$COMMON/scripts/kconfig/merge_config.sh" -m -O "$OUT"     "$OUT/.config"     "$ROOT_DIR/configs/fusion_v2_root.fragment"     "$ROOT_DIR/configs/fusion_v2_standard.fragment"
   # Fast CI validates source integration and compilation, not release LTO/BTF.
-  "$COMMON/scripts/config" --file "$OUT/.config" \
-    -e LTO_NONE \
-    -d LTO_CLANG_THIN \
-    -d LTO_CLANG_FULL \
-    -e DEBUG_INFO_NONE \
-    -d DEBUG_INFO_DWARF5 \
-    -d DEBUG_INFO_BTF
-  make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
+    "$COMMON/scripts/config" --file "$OUT/.config" \
+      -e LTO_NONE \
+      -d LTO_CLANG_THIN \
+      -d LTO_CLANG_FULL \
+      -e DEBUG_INFO_NONE \
+      -d DEBUG_INFO_DWARF5 \
+      -d DEBUG_INFO_BTF
+    make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
+    printf '%s\n' "$config_fp" > "$OUT/.fusion-fast-config-fingerprint"
+  fi
 
   grep -qx 'CONFIG_LTO_NONE=y' "$OUT/.config" || die "fast config failed to disable LTO"
   grep -qx 'CONFIG_DEBUG_INFO_NONE=y' "$OUT/.config" || die "fast config failed to disable debug info"
