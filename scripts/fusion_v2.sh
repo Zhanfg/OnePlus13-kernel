@@ -23,7 +23,9 @@ Usage:
   bash scripts/fusion_v2.sh fetch
   KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-base
   KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh integrate-root
+  KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh integrate-root-fast
   KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-source
+  KERNEL_PLATFORM=/path/to/kernel_platform bash scripts/fusion_v2.sh verify-source-fast
   TARGET_COMPILE=aarch64-linux-gnu- bash scripts/fusion_v2.sh build-kpatch-next
   bash scripts/fusion_v2.sh patch-image /path/to/Image /path/to/Image.kpatch-next
 
@@ -61,11 +63,24 @@ fetch_deps() {
   clone_pinned "KPatch-Next" "$KPATCH_NEXT_REPO" "$KPATCH_NEXT_COMMIT" "$DEPS_DIR/kpatch-next"
 }
 
-require_platform() {
-  : "${KERNEL_PLATFORM:?set KERNEL_PLATFORM to the complete OnePlus kernel_platform directory}"
+require_common_platform() {
+  : "${KERNEL_PLATFORM:?set KERNEL_PLATFORM to a kernel_platform directory}"
   [[ -d "$KERNEL_PLATFORM/common/.git" ]] || die "missing kernel_platform/common git tree"
+}
+
+require_platform() {
+  require_common_platform
   [[ -d "$KERNEL_PLATFORM/msm-kernel/.git" ]] || die "missing kernel_platform/msm-kernel git tree"
   [[ -d "$KERNEL_PLATFORM/oplus/build" ]] || die "missing complete OnePlus OKI build tree: oplus/build"
+}
+
+verify_fast_base() {
+  require_common_platform
+  local common_sha
+  common_sha="$(git -C "$KERNEL_PLATFORM/common" rev-parse HEAD)"
+  [[ -n "${FUSION_COMMON_COMMIT:-}" && "$common_sha" == "$FUSION_COMMON_COMMIT" ]] ||
+    die "fast common base drift: expected Fusion $FUSION_COMMON_COMMIT got $common_sha"
+  log "fast common verified: ROM=$ROM_BASE device=$DEVICE_CODENAME fusion-common=$common_sha"
 }
 
 verify_base() {
@@ -140,6 +155,15 @@ install_susfs() {
   log "SUSFS 2.3 kernel-side integration prepared"
 }
 
+integrate_root_fast() {
+  verify_fast_base
+  require_clean_common
+  fetch_deps
+  install_resukisu
+  install_susfs
+  log "fast root stack prepared against pinned Fusion common"
+}
+
 integrate_root() {
   verify_base
   require_clean_common
@@ -148,6 +172,23 @@ integrate_root() {
   install_susfs
   log "root stack prepared; KPatch-Next was NOT inserted into common"
   log "next: bash scripts/apply_fusion_v2_standard_config.sh '$KERNEL_PLATFORM/common'"
+}
+
+verify_source_fast() {
+  require_common_platform
+  local common="$KERNEL_PLATFORM/common"
+  local resukisu="$KERNEL_PLATFORM/KernelSU"
+
+  [[ -L "$common/drivers/kernelsu" ]] || die "drivers/kernelsu is not the expected ReSukiSU symlink"
+  [[ -d "$resukisu/.git" ]] || die "KernelSU/ReSukiSU checkout missing"
+  [[ "$(git -C "$resukisu" rev-parse HEAD)" == "$RESUKISU_COMMIT" ]] || die "ReSukiSU SHA drift"
+  [[ -f "$common/fs/susfs.c" ]] || die "SUSFS source missing"
+  grep -q '#define SUSFS_VERSION "v2.3.0"' "$common/include/linux/susfs.h" || die "SUSFS version verification failed"
+  if git -C "$common" apply --reverse --check "$DEPS_DIR/susfs/$SUSFS_KERNEL_PATCH" >/dev/null 2>&1; then
+    log "fast source verification passed"
+  else
+    die "cannot prove SUSFS common patch is applied cleanly"
+  fi
 }
 
 verify_source() {
@@ -223,7 +264,9 @@ case "${1:-}" in
   fetch) fetch_deps ;;
   verify-base) verify_base ;;
   integrate-root) integrate_root ;;
+  integrate-root-fast) integrate_root_fast ;;
   verify-source) fetch_deps; verify_source ;;
+  verify-source-fast) fetch_deps; verify_source_fast ;;
   build-kpatch-next) build_kpatch_next ;;
   patch-image) shift; patch_image "$@" ;;
   -h|--help|help|'') usage ;;
