@@ -33,10 +33,12 @@ clone_common() {
   mkdir -p "$KP"
   if [[ ! -d "$COMMON/.git" ]]; then
     rm -rf "$COMMON"
-    git clone --filter=blob:none --no-tags --depth=1 "$FUSION_COMMON_REPO" "$COMMON"
+    mkdir -p "$COMMON"
+    git -C "$COMMON" init -q
+    git -C "$COMMON" remote add origin "$FUSION_COMMON_REPO"
   fi
-  git -C "$COMMON" fetch --force --no-tags --depth=1 origin "$FUSION_COMMON_COMMIT"
-  git -C "$COMMON" checkout --detach "$FUSION_COMMON_COMMIT"
+  git -C "$COMMON" fetch --force --no-tags --filter=blob:none --depth=1 origin "$FUSION_COMMON_COMMIT"
+  git -C "$COMMON" checkout --detach -q FETCH_HEAD
   git -C "$COMMON" reset --hard "$FUSION_COMMON_COMMIT"
   git -C "$COMMON" clean -ffdqx
   [[ "$(git -C "$COMMON" rev-parse HEAD)" == "$FUSION_COMMON_COMMIT" ]] || die "Fusion common SHA mismatch"
@@ -58,7 +60,18 @@ configure() {
   mkdir -p "$OUT" "$DIST" "$CCACHE_DIR"
   make -C "$COMMON" O="$OUT" ARCH=arm64 gki_defconfig
   bash "$COMMON/scripts/kconfig/merge_config.sh" -m -O "$OUT"     "$OUT/.config"     "$ROOT_DIR/configs/fusion_v2_root.fragment"     "$ROOT_DIR/configs/fusion_v2_standard.fragment"
+  # Fast CI validates source integration and compilation, not release LTO/BTF.
+  "$COMMON/scripts/config" --file "$OUT/.config" \
+    -e LTO_NONE \
+    -d LTO_CLANG_THIN \
+    -d LTO_CLANG_FULL \
+    -e DEBUG_INFO_NONE \
+    -d DEBUG_INFO_DWARF5 \
+    -d DEBUG_INFO_BTF
   make -C "$COMMON" O="$OUT" ARCH=arm64 olddefconfig
+
+  grep -qx 'CONFIG_LTO_NONE=y' "$OUT/.config" || die "fast config failed to disable LTO"
+  grep -qx 'CONFIG_DEBUG_INFO_NONE=y' "$OUT/.config" || die "fast config failed to disable debug info"
 
   while IFS= read -r line; do
     [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
@@ -107,6 +120,8 @@ verify_image() {
     echo "rom=$ROM_BASE"
     echo "fusion_common=$FUSION_COMMON_COMMIT"
     echo "release_equivalent=false"
+    echo "fast_lto=none"
+    echo "fast_debug_info=none"
     echo "kmi_release_gate=deferred-to-full-oki"
   } > "$DIST/FAST_PROVENANCE.txt"
   timer_end verify
