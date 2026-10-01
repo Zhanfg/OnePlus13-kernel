@@ -31,21 +31,36 @@ timer_end() {
 clone_common() {
   timer_begin source
   mkdir -p "$KP"
+
   if [[ ! -d "$COMMON/.git" ]]; then
     rm -rf "$COMMON"
     mkdir -p "$COMMON"
     git -C "$COMMON" init -q
     git -C "$COMMON" remote add origin "$FUSION_COMMON_REPO"
   fi
-  git -C "$COMMON" fetch --force --no-tags --filter=blob:none --depth=1 origin "$FUSION_COMMON_COMMIT"
-  git -C "$COMMON" checkout --detach -q FETCH_HEAD
+
+  local current=""
+  current="$(git -C "$COMMON" rev-parse HEAD 2>/dev/null || true)"
+  if [[ "$current" != "$FUSION_COMMON_COMMIT" ]]; then
+    git -C "$COMMON" fetch --force --no-tags --filter=blob:none --depth=1 origin "$FUSION_COMMON_COMMIT"
+    git -C "$COMMON" checkout --detach -q FETCH_HEAD
+  fi
   git -C "$COMMON" reset --hard "$FUSION_COMMON_COMMIT"
   git -C "$COMMON" clean -ffdqx
-  [[ "$(git -C "$COMMON" rev-parse HEAD)" == "$FUSION_COMMON_COMMIT" ]] || die "Fusion common SHA mismatch"
+  [[ "$(git -C "$COMMON" rev-parse HEAD)" == "$FUSION_COMMON_COMMIT" ]] ||
+    die "Fusion common SHA mismatch"
 
-  # Fusion common carries StarKernel as a pinned gitlink. A plain shallow clone
-  # leaves drivers/starkernel empty and Kconfig cannot even be parsed.
-  if git -C "$COMMON" config -f .gitmodules --get-regexp '^submodule\..*\.path
+  # Fusion common carries StarKernel as a pinned gitlink.
+  if [[ -f "$COMMON/.gitmodules" ]] &&
+     git -C "$COMMON" config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null |
+       awk '{print $2}' | grep -qx 'drivers/starkernel'; then
+    git -C "$COMMON" submodule sync -- drivers/starkernel
+    git -C "$COMMON" submodule update --init --depth=1 --jobs=2 -- drivers/starkernel
+    [[ -f "$COMMON/drivers/starkernel/Kconfig" ]] ||
+      die "StarKernel submodule did not materialize"
+  fi
+
+  timer_end source
 }
 
 integrate() {
