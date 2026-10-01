@@ -220,7 +220,7 @@ verify_source() {
 }
 
 build_kpatch_next() {
-  fetch_deps
+  fetch_kpatch_dep
   local kp="$DEPS_DIR/kpatch-next"
   : "${TARGET_COMPILE:=aarch64-linux-gnu-}"
   command -v "${TARGET_COMPILE}gcc" >/dev/null 2>&1 || die "missing ARM64 compiler: ${TARGET_COMPILE}gcc"
@@ -252,7 +252,7 @@ patch_image() {
   [[ -n "$input" && -n "$output" ]] || die "patch-image requires input Image and output path"
   [[ -s "$input" ]] || die "input Image missing/empty: $input"
 
-  fetch_deps
+  fetch_kpatch_dep
   local kp="$DEPS_DIR/kpatch-next"
   local kptools="${KPTOOLS:-$kp/tools/build/host/kptools}"
   local kpimg="${KPIMG:-$kp/kernel/kpimg}"
