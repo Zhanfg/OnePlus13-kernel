@@ -27,7 +27,14 @@ jobs:
       FAST_WORKSPACE: ${{ github.workspace }}/.fast-oki
       FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
       CCACHE_DIR: ${{ github.workspace }}/.fusion-cache/ccache
-      FAST_JOBS: '4'
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_COMPILERCHECK: content
+      SOURCE_DATE_EPOCH: '0'
+      KBUILD_BUILD_USER: fusion-ci
+      KBUILD_BUILD_HOST: pjz110-fast
+      KBUILD_BUILD_VERSION: '1'
+      FAST_JOBS: '8'
 
     steps:
       - uses: actions/checkout@v4
