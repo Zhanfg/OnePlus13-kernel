@@ -58,12 +58,19 @@ jobs:
           path: .fast-oki/kernel_platform/common
           key: fusion-fast-common-v1
 
+      - name: Restore incremental Kbuild seed
+        id: kbuild-seed
+        uses: actions/cache/restore@v4
+        with:
+          path: .fast-oki/out
+          key: fusion-fast-kbuild-v1
+
       - name: Restore compiler cache
         id: ccache
         uses: actions/cache/restore@v4
         with:
           path: .fusion-cache/ccache
-          key: fusion-fast-ccache-${{ runner.os }}-clang-v2
+          key: fusion-fast-ccache-${{ runner.os }}-clang-v3
           restore-keys: |
             fusion-fast-ccache-${{ runner.os }}-clang-
 
@@ -82,6 +89,22 @@ jobs:
       - name: Build Image-only fast lane
         run: bash scripts/build_fusion_v2_fast.sh
 
+      - name: Trim incremental Kbuild seed
+        if: success()
+        run: |
+          rm -f .fast-oki/out/vmlinux
+          rm -f .fast-oki/out/System.map
+          rm -f .fast-oki/out/arch/arm64/boot/Image
+          rm -f .fast-oki/out/.tmp_vmlinux* 2>/dev/null || true
+          du -sh .fast-oki/out || true
+
+      - name: Save incremental Kbuild seed
+        if: success() && steps.kbuild-seed.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .fast-oki/out
+          key: fusion-fast-kbuild-v1
+
       - name: Save Fusion common seed
         if: always() && steps.common-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -94,7 +117,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .fusion-cache/ccache
-          key: fusion-fast-ccache-${{ runner.os }}-clang-v2
+          key: fusion-fast-ccache-${{ runner.os }}-clang-v3
 
       - name: Save dependency clones
         if: always() && steps.deps.outputs.cache-hit != 'true'

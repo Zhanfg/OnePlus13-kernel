@@ -123,8 +123,9 @@ install_resukisu() {
   [[ -f "$makefile" && -f "$kconfig" ]] || die "common drivers Makefile/Kconfig missing"
   rm -rf "$dst"
   [[ -d "$DEPS_DIR/resukisu/.git" ]] || die "ReSukiSU dependency cache missing"
-  git clone -q --shared --no-checkout "$DEPS_DIR/resukisu" "$dst"
-  git -C "$dst" checkout --detach -q "$RESUKISU_COMMIT"
+  cp -a "$DEPS_DIR/resukisu" "$dst"
+  git -C "$dst" reset --hard -q "$RESUKISU_COMMIT"
+  git -C "$dst" clean -ffdqx
   [[ "$(git -C "$dst" rev-parse HEAD)" == "$RESUKISU_COMMIT" ]] || die "ReSukiSU checkout mismatch"
 
   rm -rf "$common/drivers/kernelsu"
