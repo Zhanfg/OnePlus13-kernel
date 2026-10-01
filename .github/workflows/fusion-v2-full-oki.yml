@@ -185,6 +185,7 @@ jobs:
           cp "$DIST/msm-kernel.commit" candidate/ 2>/dev/null || true
           cp "$DIST/static-gate.txt" candidate/
           cp "$DIST/device-target.txt" candidate/
+          cp "$GITHUB_WORKSPACE/oki/phase-timings.env" candidate/ 2>/dev/null || true
           cp configs/fusion_v2_sources.lock candidate/
           cp configs/fusion_v2_root.fragment candidate/
           cp configs/fusion_v2_standard.fragment candidate/
@@ -227,5 +228,6 @@ jobs:
             oki/out/dist/*.config
             oki/manifest-pinned.xml
             oki/manifest-pinned.xml.sha256
+            oki/phase-timings.env
           if-no-files-found: ignore
           retention-days: 7
