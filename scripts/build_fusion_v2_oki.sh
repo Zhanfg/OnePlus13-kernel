@@ -71,8 +71,22 @@ sync_oki() {
   mkdir -p "$OKI"
   cd "$OKI"
 
-  repo init -u "$MANIFEST_REPO" -b "$MANIFEST_BRANCH" -m "$MANIFEST_FILE"
-  repo sync -c --force-sync --no-clone-bundle --no-tags -j"${SYNC_JOBS:-$(nproc)}"
+  repo init \
+    -u "$MANIFEST_REPO" \
+    -b "$MANIFEST_BRANCH" \
+    -m "$MANIFEST_FILE" \
+    --depth="${REPO_DEPTH:-1}" \
+    --manifest-depth=1 \
+    --no-clone-bundle \
+    --no-tags
+  repo sync \
+    -c \
+    --force-sync \
+    --no-clone-bundle \
+    --no-tags \
+    --optimized-fetch \
+    --prune \
+    -j"${SYNC_JOBS:-8}"
   repo manifest -r -o manifest-pinned.xml
   sha256sum manifest-pinned.xml > manifest-pinned.xml.sha256
 
