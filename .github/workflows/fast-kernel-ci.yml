@@ -34,10 +34,20 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install minimal compiler dependencies
+      - name: Ensure minimal compiler dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bc bison ccache clang dwarves flex git libelf-dev libssl-dev lld llvm
+          set -euo pipefail
+          missing=()
+          command -v bc >/dev/null || missing+=(bc)
+          command -v bison >/dev/null || missing+=(bison)
+          command -v ccache >/dev/null || missing+=(ccache)
+          command -v clang >/dev/null || missing+=(clang)
+          command -v flex >/dev/null || missing+=(flex)
+          command -v ld.lld >/dev/null || missing+=(lld)
+          if ((${#missing[@]})); then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "${missing[@]}" libelf-dev libssl-dev
+          fi
           clang --version | head -n1
           ccache --version | head -n1
 
@@ -46,7 +56,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .fusion-cache/ccache
-          key: fusion-fast-ccache-${{ runner.os }}-clang-${{ hashFiles('configs/fusion_v2_sources.lock') }}
+          key: fusion-fast-ccache-${{ runner.os }}-clang-v2
           restore-keys: |
             fusion-fast-ccache-${{ runner.os }}-clang-
 
@@ -70,7 +80,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .fusion-cache/ccache
-          key: fusion-fast-ccache-${{ runner.os }}-clang-${{ hashFiles('configs/fusion_v2_sources.lock') }}
+          key: fusion-fast-ccache-${{ runner.os }}-clang-v2
 
       - name: Save dependency clones
         if: always() && steps.deps.outputs.cache-hit != 'true'
