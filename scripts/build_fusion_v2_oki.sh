@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE_LOCK="$ROOT_DIR/configs/oneplus_13_16.0.9.401.lock"
+BASE_LOCK="${ONEPLUS_BASE_LOCK:-$ROOT_DIR/configs/oneplus_13_16.0.10.501.lock}"
 FUSION_LOCK="$ROOT_DIR/configs/fusion_v2_sources.lock"
 OKI="${OKI_WORKSPACE:-$HOME/op13-oki-fusion-v2}"
 ACTION="${1:-all}"
@@ -171,6 +171,12 @@ build_oki() {
   done
   if [[ -n "$resolved" ]]; then
     verify_requested_config "$resolved"
+    if [[ "${REQUIRE_MODVERSIONS:-0}" == "1" ]]; then
+      grep -qx 'CONFIG_MODVERSIONS=y' "$resolved" || die "PJZ110 compatibility gate: CONFIG_MODVERSIONS must stay enabled"
+    fi
+    if [[ "${REQUIRE_TRIM_UNUSED_KSYMS:-0}" == "1" ]]; then
+      grep -qx 'CONFIG_TRIM_UNUSED_KSYMS=y' "$resolved" || die "PJZ110 compatibility gate: CONFIG_TRIM_UNUSED_KSYMS must stay enabled"
+    fi
     cp "$resolved" "$OKI/out/dist/fusion-v2-resolved.config"
   else
     log "WARNING: resolved .config path not found; Image IKCONFIG gate remains mandatory"
@@ -178,6 +184,18 @@ build_oki() {
 
   strings "$OKI/out/dist/Image" | grep -m1 'Linux version' > "$OKI/out/dist/Image.version.txt" || true
   sha256sum "$OKI/out/dist/Image" > "$OKI/out/dist/Image.sha256"
+  {
+    echo "device_model=${DEVICE_MODEL}"
+    echo "device_codename=${DEVICE_CODENAME}"
+    echo "rom_base=${ROM_BASE}"
+    echo "stock_kernel_series=${STOCK_KERNEL_SERIES:-unknown}"
+    echo "stock_uname_flavor=${STOCK_UNAME_FLAVOR:-unknown}"
+    echo "stock_kmi=${STOCK_KMI:-unknown}"
+    echo "page_size=${PAGE_SIZE:-unknown}"
+    echo "oneplus_common_sha=${ONEPLUS_COMMON_SHA}"
+    echo "oneplus_msm_sha=${ONEPLUS_MSM_SHA}"
+    echo "oneplus_modules_sha=${ONEPLUS_MODULES_SHA}"
+  } > "$OKI/out/dist/device-target.txt"
   git -C "$OKI/kernel_platform/common" rev-parse HEAD > "$OKI/out/dist/fusion-common.commit"
   git -C "$OKI/kernel_platform/msm-kernel" rev-parse HEAD > "$OKI/out/dist/msm-kernel.commit"
   cp "$OKI/manifest-pinned.xml" "$OKI/out/dist/manifest-pinned.xml"
