@@ -51,6 +51,13 @@ jobs:
           clang --version | head -n1
           ccache --version | head -n1
 
+      - name: Restore Fusion common seed
+        id: common-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .fast-oki/kernel_platform/common
+          key: fusion-fast-common-v1
+
       - name: Restore compiler cache
         id: ccache
         uses: actions/cache/restore@v4
@@ -74,6 +81,13 @@ jobs:
 
       - name: Build Image-only fast lane
         run: bash scripts/build_fusion_v2_fast.sh
+
+      - name: Save Fusion common seed
+        if: always() && steps.common-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .fast-oki/kernel_platform/common
+          key: fusion-fast-common-v1
 
       - name: Save compiler cache
         if: always() && steps.ccache.outputs.cache-hit != 'true'
