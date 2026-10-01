@@ -91,6 +91,18 @@ sync_oki() {
   repo manifest -r -o manifest-pinned.xml
   sha256sum manifest-pinned.xml > manifest-pinned.xml.sha256
 
+  # A previous full-history run consumed the hosted runner until only 57 MiB
+  # remained, then failed before compilation. Fail immediately after sync unless
+  # enough headroom remains for root integration and Bazel/Kleaf outputs.
+  local free_kb free_gb min_free_gb
+  free_kb="$(df -Pk "$OKI" | awk 'NR==2 {print $4}')"
+  free_gb=$((free_kb / 1024 / 1024))
+  min_free_gb="${MIN_FREE_GB_AFTER_SYNC:-20}"
+  du -sh "$OKI/.repo" "$OKI/kernel_platform" "$OKI" 2>/dev/null || true
+  df -h "$OKI"
+  (( free_gb >= min_free_gb )) ||
+    die "insufficient disk after OKI sync: ${free_gb}GiB free; require >=${min_free_gb}GiB"
+
   verify_official_platform
   switch_fusion_common
   verify_build_platform
