@@ -39,10 +39,6 @@ patched_sha="$(sha256sum "$PATCHED_IMAGE" | awk '{print $1}')"
 # Stable implementation markers; do not rely on SUBLEVEL/uname as a quality signal.
 strings "$RAW_IMAGE" | grep -Fq 'susfs is initialized! version: v2.3.0' || die "SUSFS v2.3.0 marker not found"
 strings "$RAW_IMAGE" | grep -Eiq 'ReSukiSU|resukisu\.org|dynamic_manager|MULTI.*MANAGER' || die "ReSukiSU/multi-manager marker not found"
-strings "$RAW_IMAGE" | grep -Fq 'adios_dispatch_request' || die "ADIOS implementation marker not found"
-strings "$RAW_IMAGE" | grep -Eiq '/dev/ntsync|drivers/misc/ntsync\.c|ntsync_create' || die "NTSYNC implementation marker not found"
-strings "$RAW_IMAGE" | grep -Eiq 'hmbird|HMBIRD_TASK_PROP' || die "HMBIRD marker not found"
-strings "$RAW_IMAGE" | grep -Fq 'slim_walt' || die "slim_walt marker not found"
 
 # IKCONFIG is mandatory for this static gate.
 [[ -n "$KERNEL_PLATFORM" ]] || die "KERNEL_PLATFORM is required for strict IKCONFIG verification"
@@ -52,6 +48,25 @@ config_tmp="$(mktemp)"
 trap 'rm -f "$config_tmp"' EXIT
 bash "$extractor" "$RAW_IMAGE" > "$config_tmp"
 [[ -s "$config_tmp" ]] || die "IKCONFIG extraction returned empty output"
+
+# PJZ110 stock keeps module symbol versioning and trims unused KMI exports.
+# Refuse an Image that drops either property before vendor-module testing.
+grep -qx 'CONFIG_MODVERSIONS=y' "$config_tmp" || die "CONFIG_MODVERSIONS is not enabled"
+grep -qx 'CONFIG_TRIM_UNUSED_KSYMS=y' "$config_tmp" || die "CONFIG_TRIM_UNUSED_KSYMS is not enabled"
+
+# Optional subsystems are verified only when their resolved config is enabled.
+if grep -qx 'CONFIG_MQ_IOSCHED_ADIOS=y' "$config_tmp"; then
+  strings "$RAW_IMAGE" | grep -Fq 'adios_dispatch_request' || die "ADIOS enabled but implementation marker not found"
+fi
+if grep -qx 'CONFIG_NTSYNC=y' "$config_tmp"; then
+  strings "$RAW_IMAGE" | grep -Eiq '/dev/ntsync|drivers/misc/ntsync\.c|ntsync_create' || die "NTSYNC enabled but implementation marker not found"
+fi
+if grep -qx 'CONFIG_HMBIRD_SCHED=y' "$config_tmp"; then
+  strings "$RAW_IMAGE" | grep -Eiq 'hmbird|HMBIRD_TASK_PROP' || die "HMBIRD enabled but marker not found"
+fi
+if grep -qx 'CONFIG_SLIM_SCHED=y' "$config_tmp"; then
+  strings "$RAW_IMAGE" | grep -Fq 'slim_walt' || die "SLIM_SCHED enabled but slim_walt marker not found"
+fi
 
 verify_fragment() {
   local fragment="$1"
