@@ -53,9 +53,15 @@ jobs:
 
           verify_pin() {
             local label="$1" url="$2" sha="$3"
-            git ls-remote "$url" | awk '{print $1}' | grep -qx "$sha" ||
-              { echo "::error::$label pin not reachable: $sha"; exit 1; }
+            local dir="$RUNNER_TEMP/pin-$label"
+            rm -rf "$dir"
+            git init -q "$dir"
+            git -C "$dir" -c protocol.version=2 fetch \
+              --force --no-tags --filter=blob:none --depth=1 "$url" "$sha"
+            test "$(git -C "$dir" rev-parse FETCH_HEAD)" = "$sha" ||
+              { echo "::error::$label pin mismatch after fetch: $sha"; exit 1; }
             echo "$label=$sha"
+            rm -rf "$dir"
           }
 
           verify_pin oneplus-common "$ONEPLUS_COMMON_REPO" "$ONEPLUS_COMMON_SHA"
