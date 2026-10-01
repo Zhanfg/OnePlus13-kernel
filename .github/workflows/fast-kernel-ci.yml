@@ -1,0 +1,103 @@
+name: PJZ110 Fusion Fast Lane
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/accelerate-pjz110-oki
+    paths:
+      - '.github/workflows/fast-kernel-ci.yml'
+      - 'scripts/build_fusion_v2_fast.sh'
+      - 'scripts/fusion_v2.sh'
+      - 'configs/fusion_v2_**'
+      - 'configs/oneplus_13_16.0.10.501.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fusion-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FAST_WORKSPACE: ${{ github.workspace }}/.fast-oki
+      FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
+      CCACHE_DIR: ${{ github.workspace }}/.fusion-cache/ccache
+      FAST_JOBS: '4'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install minimal compiler dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison ccache clang dwarves flex git libelf-dev libssl-dev lld llvm
+          clang --version | head -n1
+          ccache --version | head -n1
+
+      - name: Restore compiler cache
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .fusion-cache/ccache
+          key: fusion-fast-ccache-${{ runner.os }}-clang-${{ hashFiles('configs/fusion_v2_sources.lock') }}
+          restore-keys: |
+            fusion-fast-ccache-${{ runner.os }}-clang-
+
+      - name: Restore pinned dependency clones
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: .work/fusion-v2/deps
+          key: fusion-fast-deps-${{ hashFiles('configs/fusion_v2_sources.lock') }}
+
+      - name: Shell gate
+        run: |
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/build_fusion_v2_fast.sh
+
+      - name: Build Image-only fast lane
+        run: bash scripts/build_fusion_v2_fast.sh
+
+      - name: Save compiler cache
+        if: always() && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .fusion-cache/ccache
+          key: fusion-fast-ccache-${{ runner.os }}-clang-${{ hashFiles('configs/fusion_v2_sources.lock') }}
+
+      - name: Save dependency clones
+        if: always() && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .work/fusion-v2/deps
+          key: fusion-fast-deps-${{ hashFiles('configs/fusion_v2_sources.lock') }}
+
+      - name: Upload fast Image
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pjz110-fast-image-${{ github.run_number }}
+          path: |
+            .fast-oki/dist/Image
+            .fast-oki/dist/Image.sha256
+            .fast-oki/dist/Image.version.txt
+            .fast-oki/dist/fast-resolved.config
+            .fast-oki/dist/FAST_PROVENANCE.txt
+            .fast-oki/dist/ccache-stats.txt
+            .fast-oki/timings.env
+          retention-days: 3
+
+      - name: Print timing summary
+        if: always()
+        run: |
+          echo '### Fusion Fast Lane' >> "$GITHUB_STEP_SUMMARY"
+          if test -f .fast-oki/timings.env; then
+            cat .fast-oki/timings.env | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
