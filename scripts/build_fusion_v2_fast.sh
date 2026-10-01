@@ -50,16 +50,6 @@ clone_common() {
   [[ "$(git -C "$COMMON" rev-parse HEAD)" == "$FUSION_COMMON_COMMIT" ]] ||
     die "Fusion common SHA mismatch"
 
-  # Fusion common carries StarKernel as a pinned gitlink.
-  if [[ -f "$COMMON/.gitmodules" ]] &&
-     git -C "$COMMON" config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null |
-       awk '{print $2}' | grep -qx 'drivers/starkernel'; then
-    git -C "$COMMON" submodule sync -- drivers/starkernel
-    git -C "$COMMON" submodule update --init --depth=1 --jobs=2 -- drivers/starkernel
-    [[ -f "$COMMON/drivers/starkernel/Kconfig" ]] ||
-      die "StarKernel submodule did not materialize"
-  fi
-
   timer_end source
 }
 
