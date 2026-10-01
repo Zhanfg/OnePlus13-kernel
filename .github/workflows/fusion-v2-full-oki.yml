@@ -92,6 +92,7 @@ jobs:
           OKI_WORKSPACE: ${{ github.workspace }}/oki
           SYNC_JOBS: '8'
           REPO_DEPTH: '1'
+          MIN_FREE_GB_AFTER_SYNC: '20'
           TARGET_COMPILE: aarch64-linux-gnu-
           FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
           ONEPLUS_BASE_LOCK: ${{ github.workspace }}/configs/oneplus_13_16.0.10.501.lock
