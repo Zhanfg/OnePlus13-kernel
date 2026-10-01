@@ -36,7 +36,7 @@ apply_line() {
 for fragment in "${FRAGMENTS[@]}"; do
   [[ -f "$fragment" ]] || fail "missing fragment: $fragment"
   while IFS= read -r line; do
-    [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
+    [[ "$line" =~ ^CONFIG_[A-Za-z0-9_]+=[ym]$ || "$line" =~ ^#\ CONFIG_[A-Za-z0-9_]+\ is\ not\ set$ ]] || continue
     apply_line "$line"
   done < "$fragment"
 done
@@ -46,7 +46,7 @@ make -C "$COMMON" ARCH=arm64 olddefconfig >/dev/null
 
 for fragment in "${FRAGMENTS[@]}"; do
   while IFS= read -r line; do
-    [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
+    [[ "$line" =~ ^CONFIG_[A-Za-z0-9_]+=[ym]$ || "$line" =~ ^#\ CONFIG_[A-Za-z0-9_]+\ is\ not\ set$ ]] || continue
     if [[ "$line" =~ ^CONFIG_([A-Za-z0-9_]+)=([ym])$ ]]; then
       grep -qx "$line" "$defconfig" || fail "final config mismatch: $line"
     elif [[ "$line" =~ ^#\ CONFIG_([A-Za-z0-9_]+)\ is\ not\ set$ ]]; then
