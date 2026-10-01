@@ -114,6 +114,20 @@ require_clean_common() {
   [[ -z "$(git -C "$common" ls-files --others --exclude-standard | head -n1)" ]] || die "common worktree has untracked files"
 }
 
+materialize_starkernel_stub() {
+  local common="$KERNEL_PLATFORM/common"
+  local sk="$common/drivers/starkernel"
+
+  # Historical BrokeStar builds already treated this submodule as private and
+  # generated a stub when it was unavailable. Keep CI reproducible instead of
+  # silently depending on a dead/private external repository.
+  rm -rf "$sk"
+  mkdir -p "$sk"
+  printf '%s\n' '# StarKernel private/unavailable: reproducible CI stub.' > "$sk/Kconfig"
+  printf '%s\n' 'obj-y :=' > "$sk/Makefile"
+  log "StarKernel private submodule replaced by deterministic CI stub"
+}
+
 install_resukisu() {
   local common="$KERNEL_PLATFORM/common"
   local dst="$KERNEL_PLATFORM/KernelSU"
@@ -165,6 +179,7 @@ install_susfs() {
 integrate_root_fast() {
   verify_fast_base
   require_clean_common
+  materialize_starkernel_stub
   fetch_root_deps
   install_resukisu
   install_susfs
@@ -174,6 +189,7 @@ integrate_root_fast() {
 integrate_root() {
   verify_base
   require_clean_common
+  materialize_starkernel_stub
   fetch_root_deps
   install_resukisu
   install_susfs
