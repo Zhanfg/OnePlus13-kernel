@@ -18,6 +18,25 @@ log() { printf '[fusion-v2-oki] %s\n' "$*"; }
 die() { printf '[fusion-v2-oki][ERROR] %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
+run_phase() {
+  local name="$1"
+  shift
+  local start end elapsed rc
+  mkdir -p "$OKI"
+  start="$(date +%s)"
+  log "phase-start $name $(date -u +%FT%TZ)"
+  set +e
+  "$@"
+  rc=$?
+  set -e
+  end="$(date +%s)"
+  elapsed=$((end - start))
+  printf '%s=%s\n' "$name" "$elapsed" >> "$OKI/phase-timings.env"
+  log "phase-end $name seconds=$elapsed rc=$rc"
+  df -h "$OKI" | tail -n 1 || true
+  return "$rc"
+}
+
 usage() {
   cat <<EOF
 Usage: OKI_WORKSPACE=/path/to/op13-oki bash scripts/build_fusion_v2_oki.sh <action>
@@ -248,12 +267,20 @@ kpatch_image() {
   log "KPatch-Next Image + static gates passed"
 }
 
+mkdir -p "$OKI"
+: > "$OKI/phase-timings.env"
+
 case "$ACTION" in
-  sync) sync_oki ;;
-  prepare) prepare_tree ;;
-  build) build_oki ;;
-  kpatch) kpatch_image ;;
-  all) sync_oki; prepare_tree; build_oki; kpatch_image ;;
+  sync) run_phase sync sync_oki ;;
+  prepare) run_phase prepare prepare_tree ;;
+  build) run_phase build build_oki ;;
+  kpatch) run_phase kpatch kpatch_image ;;
+  all)
+    run_phase sync sync_oki
+    run_phase prepare prepare_tree
+    run_phase build build_oki
+    run_phase kpatch kpatch_image
+    ;;
   help|-h|--help) usage ;;
   *) usage; die "unknown action: $ACTION" ;;
 esac
