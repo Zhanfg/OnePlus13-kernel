@@ -4,7 +4,7 @@
 # kernel_platform/common is switched to this reviewed Fusion common commit before integration.
 
 FUSION_COMMON_REPO=https://github.com/ZhanfgBuild/android_kernel_common_oneplus_sm8750.git
-FUSION_COMMON_COMMIT=b8b117a85f69a6ae0e8e5cdfa1379b2ef4d507ed
+FUSION_COMMON_COMMIT=f86ee8fd0bd7ece198cad2dd481abb81126496ac
 
 RESUKISU_REPO=https://github.com/ReSukiSU/ReSukiSU.git
 # Matches the ReSukiSU generation identified in the qdykernel binary audit.
