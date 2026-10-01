@@ -82,6 +82,7 @@ sync_oki() {
     --no-tags
   repo sync \
     -c \
+    --fail-fast \
     --force-sync \
     --no-clone-bundle \
     --no-tags \
