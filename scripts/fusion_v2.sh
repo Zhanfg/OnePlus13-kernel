@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="$ROOT_DIR/configs/fusion_v2_sources.lock"
-BASE_LOCK_FILE="$ROOT_DIR/configs/oneplus_13_16.0.9.401.lock"
+BASE_LOCK_FILE="${ONEPLUS_BASE_LOCK:-$ROOT_DIR/configs/oneplus_13_16.0.10.501.lock}"
 WORK_DIR="${FUSION_WORK_DIR:-$ROOT_DIR/.work/fusion-v2}"
 DEPS_DIR="$WORK_DIR/deps"
 
