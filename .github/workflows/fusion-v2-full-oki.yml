@@ -1,10 +1,10 @@
-name: Fusion V2 Complete OnePlus OKI
+name: PJZ110 16.0.10.501 Complete OnePlus OKI
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - integration/resukisu-susfs23-kpatchnext
+      - build/pjz110-16.0.10.501-oki
     paths:
       - '.github/workflows/fusion-v2-full-oki.yml'
       - 'scripts/fusion_v2.sh'
@@ -13,7 +13,7 @@ on:
       - 'scripts/verify_fusion_v2_image.sh'
       - 'scripts/verify_fusion_v2_release.sh'
       - 'configs/fusion_v2_**'
-      - 'configs/oneplus_13_16.0.9.401.lock'
+      - 'configs/oneplus_13_16.0.10.501.lock'
 
 permissions:
   contents: read
@@ -64,9 +64,9 @@ jobs:
           path: |
             .fusion-cache/bazel-disk
             .fusion-cache/bazel-repository
-          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
+          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
           restore-keys: |
-            fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock') }}-
+            fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock') }}-
             fusion-v2-bazel-${{ runner.os }}-
 
       - name: Prepare Bazel cache directories
@@ -93,6 +93,7 @@ jobs:
           SYNC_JOBS: '4'
           TARGET_COMPILE: aarch64-linux-gnu-
           FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
+          ONEPLUS_BASE_LOCK: ${{ github.workspace }}/configs/oneplus_13_16.0.10.501.lock
           # OnePlus build_with_bazel.py recognizes --cache_dir itself and forwards
           # the remaining options to Bazel/Kleaf. The portable disk cache survives
           # clean output trees; repository_cache avoids re-downloading Bazel externals.
@@ -149,7 +150,7 @@ jobs:
           path: |
             .fusion-cache/bazel-disk
             .fusion-cache/bazel-repository
-          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
+          key: fusion-v2-bazel-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.10.501.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.sha }}
 
       - name: Assemble static candidate evidence
         if: success()
@@ -173,6 +174,7 @@ jobs:
           cp "$DIST/fusion-common.commit" candidate/ 2>/dev/null || true
           cp "$DIST/msm-kernel.commit" candidate/ 2>/dev/null || true
           cp "$DIST/static-gate.txt" candidate/
+          cp "$DIST/device-target.txt" candidate/
           cp configs/fusion_v2_sources.lock candidate/
           cp configs/fusion_v2_root.fragment candidate/
           cp configs/fusion_v2_standard.fragment candidate/
@@ -199,7 +201,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: fusion-v2-static-candidate-${{ github.run_number }}
+          name: pjz110-16.0.10.501-static-candidate-${{ github.run_number }}
           path: candidate/
           if-no-files-found: error
           retention-days: 7
