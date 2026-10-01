@@ -120,7 +120,7 @@ prepare_tree() {
 verify_fragment() {
   local image_config="$1" fragment="$2"
   while IFS= read -r line; do
-    [[ -z "$line" || "$line" =~ ^#[[:space:]][^C] ]] && continue
+    [[ "$line" =~ ^CONFIG_[A-Za-z0-9_]+=[ym]$ || "$line" =~ ^#\ CONFIG_[A-Za-z0-9_]+\ is\ not\ set$ ]] || continue
     grep -qxF "$line" "$image_config" || die "resolved config mismatch from $(basename "$fragment"): $line"
   done < "$fragment"
 }
