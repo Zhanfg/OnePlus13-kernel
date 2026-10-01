@@ -1,0 +1,80 @@
+name: PJZ110 Full OKI Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/accelerate-pjz110-oki
+    paths:
+      - '.github/workflows/full-oki-preflight.yml'
+      - '.github/workflows/fusion-v2-full-oki.yml'
+      - 'scripts/build_fusion_v2_oki.sh'
+      - 'scripts/fusion_v2.sh'
+      - 'configs/fusion_v2_sources.lock'
+      - 'configs/oneplus_13_16.0.10.501.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-oki-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Shell syntax gate
+        run: |
+          set -euo pipefail
+          bash -n scripts/build_fusion_v2_oki.sh
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/apply_fusion_v2_standard_config.sh
+          bash -n scripts/verify_fusion_v2_image.sh
+          bash -n scripts/verify_fusion_v2_release.sh
+
+      - name: Install repo tool
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Verify immutable source pins
+        run: |
+          set -euo pipefail
+          source configs/oneplus_13_16.0.10.501.lock
+          source configs/fusion_v2_sources.lock
+
+          verify_pin() {
+            local label="$1" url="$2" sha="$3"
+            git ls-remote "$url" | awk '{print $1}' | grep -qx "$sha" ||
+              { echo "::error::$label pin not reachable: $sha"; exit 1; }
+            echo "$label=$sha"
+          }
+
+          verify_pin oneplus-common "$ONEPLUS_COMMON_REPO" "$ONEPLUS_COMMON_SHA"
+          verify_pin oneplus-msm "$ONEPLUS_MSM_REPO" "$ONEPLUS_MSM_SHA"
+          verify_pin oneplus-modules "$ONEPLUS_MODULES_REPO" "$ONEPLUS_MODULES_SHA"
+          verify_pin fusion-common "$FUSION_COMMON_REPO" "$FUSION_COMMON_COMMIT"
+          verify_pin resukisu "$RESUKISU_REPO" "$RESUKISU_COMMIT"
+          verify_pin susfs "$SUSFS_REPO" "$SUSFS_COMMIT"
+          verify_pin kpatch-next "$KPATCH_NEXT_REPO" "$KPATCH_NEXT_COMMIT"
+
+      - name: Validate shallow manifest initialization
+        run: |
+          set -euo pipefail
+          source configs/oneplus_13_16.0.10.501.lock
+          mkdir -p "$RUNNER_TEMP/oki-preflight"
+          cd "$RUNNER_TEMP/oki-preflight"
+          repo init             -u "$MANIFEST_REPO"             -b "$MANIFEST_BRANCH"             -m "$MANIFEST_FILE"             --depth=1             --manifest-depth=1             --no-clone-bundle             --no-tags
+          repo manifest -o resolved-manifest.xml
+          grep -q 'android_kernel_common_oneplus_sm8750' resolved-manifest.xml
+          grep -q 'android_kernel_oneplus_sm8750' resolved-manifest.xml
+          grep -q 'android_kernel_modules_and_devicetree_oneplus_sm8750' resolved-manifest.xml
+          du -sh .repo
