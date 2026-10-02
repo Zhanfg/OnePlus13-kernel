@@ -181,6 +181,10 @@ configure_kernel() {
     local force_configs=(
         "CONFIG_KALLSYMS=y"
         "CONFIG_KALLSYMS_ALL=y"
+        "CONFIG_KSU_SUSFS=y"
+        "CONFIG_KSU_SUSFS_SUS_MOUNT=y"
+        "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y"
+        "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y"
         "CONFIG_OVERLAY_FS=y"
         "CONFIG_TMPFS_XATTR=y"
         "CONFIG_TMPFS_POSIX_ACL=y"
@@ -382,7 +386,7 @@ generate_changelog() {
 功能清单:
   [Root / 隐藏]
   - ReSukiSU (主 Root)
-  - SuSFS v2.2.0 全功能 (SUS_PATH/MOUNT/KSTAT/MAP, OPEN_REDIRECT, AVC spoof, uname spoof)
+  - SuSFS v2.3.0 (含 KSU default/bind mount Auto-Add, SUS_PATH/MOUNT/KSTAT/MAP)
   - KALLSYMS + KALLSYMS_ALL (始终开启)
   - OVERLAY_FS + TMPFS_XATTR + TMPFS_POSIX_ACL (hy/Mountify 支持)
 
