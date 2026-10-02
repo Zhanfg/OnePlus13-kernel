@@ -13,6 +13,8 @@ log() { echo "[fusion-v2-config] $*"; }
 [[ -f "$COMMON/arch/arm64/configs/gki_defconfig" ]] || fail "gki_defconfig missing"
 [[ -e "$COMMON/drivers/kernelsu/Kconfig" ]] || fail "ReSukiSU is not integrated yet"
 [[ -f "$COMMON/fs/susfs.c" ]] || fail "SUSFS kernel source is not integrated yet"
+grep -q 'config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT' "$COMMON/drivers/kernelsu/Kconfig" || fail "ReSukiSU Kconfig lacks AUTO_ADD_SUS_KSU_DEFAULT_MOUNT"
+grep -q 'config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT' "$COMMON/drivers/kernelsu/Kconfig" || fail "ReSukiSU Kconfig lacks AUTO_ADD_SUS_BIND_MOUNT"
 
 if [[ $# -gt 0 ]]; then
   fragments=("$@")
