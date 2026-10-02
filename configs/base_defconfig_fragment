@@ -8,10 +8,14 @@ CONFIG_LOCALVERSION="-sun-custom"
 CONFIG_KALLSYMS=y
 CONFIG_KALLSYMS_ALL=y
 
-# --- Root: ReSukiSU & SuSFS ---
-# KSU 已由 ReSukiSU 补丁自动配置
-# SuSFS v2.2.0 相关（具体由补丁提供）：
-# CONFIG_KSU_SUSFS=y  (由补丁设置)
+# --- Root: ReSukiSU & SuSFS v2.3.0 ---
+# KSU 由 ReSukiSU 补丁提供；这里显式固定 SUSFS mount hiding 所需能力。
+# Hybrid/OverlayFS 必须启用两个 Auto-Add 项，否则 KSU 默认挂载/Bind 挂载
+# 不会自动进入 sus_mount，hide_sus_mnts_for_non_su_procs 将无对象可隐藏。
+CONFIG_KSU_SUSFS=y
+CONFIG_KSU_SUSFS_SUS_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
 
 # --- hy / Mountify ---
 CONFIG_OVERLAY_FS=y
