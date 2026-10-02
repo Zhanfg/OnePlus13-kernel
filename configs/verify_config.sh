@@ -24,7 +24,11 @@ echo ""
 echo "[Root / SuSFS]"
 check "CONFIG_KALLSYMS"
 check "CONFIG_KALLSYMS_ALL"
-# KSU/SuSFS 需额外运行时验证
+check "CONFIG_KSU_SUSFS"
+check "CONFIG_KSU_SUSFS_SUS_MOUNT"
+check "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT"
+check "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT"
+# 运行时仍需验证 enabled_features 与实际 mount namespace
 echo ""
 
 # --- hy / Mountify ---
