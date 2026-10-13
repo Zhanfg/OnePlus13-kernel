@@ -205,7 +205,7 @@ kpatch_image() {
     "$OKI/out/dist/Image.kpatch-next"
 
   export KERNEL_PLATFORM="$OKI/kernel_platform"
-  export KPTOOLS="$ROOT_DIR/.work/fusion-v2/deps/kpatch-next/tools/build/host/kptools"
+  export KPTOOLS="${FUSION_WORK_DIR:-$ROOT_DIR/.work/fusion-v2}/deps/kpatch-next/tools/build/host/kptools"
   bash "$ROOT_DIR/scripts/verify_fusion_v2_image.sh" \
     "$OKI/out/dist/Image" "$OKI/out/dist/Image.kpatch-next" | tee "$OKI/out/dist/static-gate.txt"
   bash "$ROOT_DIR/scripts/verify_fusion_v2_release.sh" "$OKI/out/dist/Image.kpatch-next" | tee -a "$OKI/out/dist/static-gate.txt"
