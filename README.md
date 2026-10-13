@@ -1,6 +1,6 @@
 # OnePlus 13（sun / SM8750）自定义内核工程
 
-面向 **OnePlus 13 国行 PJZ110 / ColorOS 16** 的完整 OKI 构建、官方上游同步、自定义 common 集成、AnyKernel3 打包与真机验收工程。
+面向 **OnePlus 13 国行 PJZ110** 的完整 OKI 构建、官方上游同步、自定义 common 集成、AnyKernel3 打包与真机验收工程。
 
 > 当前状态：**Experimental**。完整 OnePlus OKI 官方路径曾成功构建 Linux 6.6.118 产物；自定义 common 当前为 Linux 6.6.126。官方 16.0.9.401 更新尚未完成全部冲突解决、完整 OKI 重建和真机验证，现有产物不能直接视为 Stable。
 
@@ -17,7 +17,9 @@
 
 本仓库是项目控制仓库，不是完整源码镜像。只克隆 common 或 msm-kernel 不能代表完整 OnePlus 13 工程。
 
-**2026-10-13 官方 OKI 固定快照：**[完整 35 项目 manifest](manifests/oneplus_13_b_20261013_pinned.xml) · [官方同步核验记录](docs/OKI_OFFICIAL_SYNC_20261013.md) · [来源校验脚本](scripts/check_official_oki.py)。本次核实 OnePlusOSS 上游三项目无比 .401 更新的提交；固化源版本不等于完成全量构建，更不代表适配当前 .501 固件。
+**2026-10-13 官方 OKI 固定快照：**[完整 35 项目 manifest](manifests/oneplus_13_b_20261013_pinned.xml) · [官方同步核验记录](docs/OKI_OFFICIAL_SYNC_20261013.md) · [来源校验脚本](scripts/check_official_oki.py)。本次核实 OnePlusOSS 上游三项目无比 .401 更新的提交；固化源版本不等于完成全量构建，更不代表适配当前用户报告的 Android 17（版本尾号 103）固件。
+
+**当前目标设备（用户报告，2026-10-13）：** Android 17，系统版本尾号 `103`；社区存在 `ColorOS 17.0.0.103` 固件包记录，但完整 PJZ110 构建号、实际内核、ABI/KMI 和固件匹配关系仍需设备只读校验。此信息与下方 **最新公开 OnePlusOSS 源码基线** 不同。
 
 ## 当前官方基线
 
@@ -25,7 +27,7 @@
 
 | 项目 | 当前值 |
 |---|---|
-| 设备版本 | `PJZ110_16.0.9.401(CN01)` |
+| 官方 OSS 对应固件版本（非当前已验证设备版本） | `PJZ110_16.0.9.401(CN01)` |
 | Manifest | `oneplus/sm8750` + `oneplus_13_b.xml` |
 | 官方 common SHA | `e1b346b6b4f4096eb342ae3684838a942fd6f6c4` |
 | 官方 common | Linux `6.6.118` / `android15-6.6-2026-01_r22` |
