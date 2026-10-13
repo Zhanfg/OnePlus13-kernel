@@ -1,0 +1,33 @@
+name: Verify Official OnePlus 13 OKI Snapshot
+
+on:
+  pull_request:
+    paths:
+      - 'manifests/oneplus_13_b_20261013_pinned.xml'
+      - 'scripts/check_official_oki.py'
+      - '.github/workflows/verify-official-oki.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'manifests/oneplus_13_b_20261013_pinned.xml'
+      - 'scripts/check_official_oki.py'
+      - '.github/workflows/verify-official-oki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-provenance:
+    name: Fixed manifest and official branch heads (not a kernel build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify manifest and upstream commit SHAs
+        run: python3 scripts/check_official_oki.py --check-remote
+      - name: Report verification boundary
+        run: |
+          echo 'Source provenance verified only.'
+          echo 'Full OKI sun perf build, ABI/KMI and device boot are NOT tested.'
