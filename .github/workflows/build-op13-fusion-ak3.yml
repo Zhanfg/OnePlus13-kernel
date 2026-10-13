@@ -1,0 +1,14 @@
+name: Build OnePlus 13 Fusion V2 AK3 candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Manual-only launch from main. Fusion V2 source changes remain isolated in
+# its own integration branch until source/build/ABI/boot review is complete.
+jobs:
+  build-candidate:
+    name: Full pinned OKI → Fusion V2 → KPatch-Next → AK3
+    uses: Zhanfg/OnePlus13-kernel/.github/workflows/fusion-v2-self-hosted.yml@integration/resukisu-susfs23-kpatchnext
