@@ -71,8 +71,18 @@ sync_oki() {
   mkdir -p "$OKI"
   cd "$OKI"
 
-  repo init -u "$MANIFEST_REPO" -b "$MANIFEST_BRANCH" -m "$MANIFEST_FILE"
-  repo sync -c --force-sync --no-clone-bundle --no-tags -j"${SYNC_JOBS:-$(nproc)}"
+  # Use the 2026-10-13 verified complete 35-project source snapshot rather
+  # than following movable OnePlusOSS branch heads during a long sync.
+  # Check the fetched manifest against the control checkout before downloading
+  # any large source trees; fail if this branch's manifest was unexpectedly changed.
+  local control_repo="https://github.com/Zhanfg/OnePlus13-kernel.git"
+  local control_branch="integration/resukisu-susfs23-kpatchnext"
+  local pinned_manifest="manifests/oneplus_13_b_20261013_pinned.xml"
+  [[ -s "$ROOT_DIR/$pinned_manifest" ]] || die "missing pinned OKI manifest"
+  repo init -u "$control_repo" -b "$control_branch" -m "$pinned_manifest"
+  cmp -s "$ROOT_DIR/$pinned_manifest" "$OKI/.repo/manifests/$pinned_manifest" ||
+    die "remote manifest diverges from local reviewed snapshot"
+  repo sync -c --no-clone-bundle --no-tags -j"${SYNC_JOBS:-$(nproc)}"
   repo manifest -r -o manifest-pinned.xml
   sha256sum manifest-pinned.xml > manifest-pinned.xml.sha256
 
