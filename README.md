@@ -17,9 +17,11 @@
 
 本仓库是项目控制仓库，不是完整源码镜像。只克隆 common 或 msm-kernel 不能代表完整 OnePlus 13 工程。
 
+**2026-10-13 官方 OKI 固定快照：**[完整 35 项目 manifest](manifests/oneplus_13_b_20261013_pinned.xml) · [官方同步核验记录](docs/OKI_OFFICIAL_SYNC_20261013.md) · [来源校验脚本](scripts/check_official_oki.py)。本次核实 OnePlusOSS 上游三项目无比 .401 更新的提交；固化源版本不等于完成全量构建，更不代表适配当前 .501 固件。
+
 ## 当前官方基线
 
-最后核对：**2026-07-29**。
+最后核对：**2026-10-13**（最新已公开官方 OKI 仍为 .401 / Linux 6.6.118）。
 
 | 项目 | 当前值 |
 |---|---|
@@ -175,7 +177,7 @@ HMBIRD 与官方 SCX 使用相同调度策略编号 `7`，并共同修改 fork�
 | 固定同步 PR #6 | 已建立，保持 Draft |
 | 四方冲突文件导出 | 已完成 |
 | 第一轮 31 路径规则 | 已完成并验证 |
-| 剩余冲突 | 85 个，处理中 |
+| 第三轮后剩余历史合并冲突 | 50 个，参见 PR #6 |
 | 固定 manifest clean build | 待完成 |
 | ABI/KMI / AFDO | 待完成 |
 | 真机启动与运行时验证 | 待完成 |
@@ -255,7 +257,7 @@ repo manifest -r -o manifest-pinned.xml
 
 ## 合并与发布检查
 
-- [ ] 剩余 85 个冲突逐文件解决并记录理由
+- [ ] 历史合并候选剩余 50 个冲突逐文件解决并记录理由（PR #6；Fusion V2 另走官方基线）
 - [ ] HMBIRD / SCX / SLIM 架构和策略编号解决
 - [ ] 固定完整 manifest
 - [ ] common、msm-kernel、modules / DT revision 匹配
