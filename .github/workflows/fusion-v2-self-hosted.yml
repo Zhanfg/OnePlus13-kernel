@@ -25,6 +25,17 @@ jobs:
           echo "runner=$(uname -a)"
           df -h
 
+      - name: Disk capacity preflight (80 GiB free required)
+        run: |
+          set -euo pipefail
+          free_bytes="$(df -PB1 "$GITHUB_WORKSPACE" | awk 'NR==2 {print $4}')"
+          min_bytes=$((80 * 1024 * 1024 * 1024))
+          echo "free_bytes=$free_bytes min_bytes=$min_bytes"
+          if (( free_bytes < min_bytes )); then
+            echo "::error::Full OnePlus OKI exceeds normal GitHub-hosted disk; use a persistent x86_64 Linux runner with >=80 GiB free."
+            exit 1
+          fi
+
       - name: Checkout control repository
         uses: actions/checkout@v4
         with:
@@ -85,6 +96,7 @@ jobs:
           bash -n scripts/apply_fusion_v2_standard_config.sh
           bash -n scripts/verify_fusion_v2_image.sh
           bash -n scripts/verify_fusion_v2_release.sh
+          bash -n scripts/pack_fusion_v2_ak3.sh
 
       - name: Build complete Fusion V2 OKI
         env:
@@ -97,6 +109,21 @@ jobs:
           bash scripts/build_fusion_v2_oki.sh all
           END=$(date +%s)
           echo "elapsed_seconds=$((END-START))" | tee "$OKI_WORKSPACE/out/dist/self-hosted-timing.txt"
+
+      - name: Package AK3 candidate from verified Fusion V2 Image
+        if: success()
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/aki"
+          bash scripts/pack_fusion_v2_ak3.sh \
+            "$OKI_WORKSPACE/out/dist/Image.kpatch-next" \
+            "$GITHUB_WORKSPACE/releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip" \
+            "$GITHUB_WORKSPACE/aki"
+          test "$(find aki -maxdepth 1 -name '*.zip' -type f | wc -l)" -eq 1
+          zipfile="$(find aki -maxdepth 1 -name '*.zip' -type f -print -quit)"
+          unzip -t "$zipfile" >/dev/null
+          sha256sum -c "$zipfile.sha256"
+          echo 'EXPERIMENTAL - DO NOT FLASH TO ANDROID 17 .103 UNTIL ABI/VENDOR MATCH AND BOOT TESTS PASS' > aki/DO_NOT_FLASH_ANDROID17_103.txt
 
       - name: Assemble static candidate evidence
         if: success()
@@ -126,6 +153,9 @@ jobs:
           cp configs/fusion_v2_root.fragment candidate/
           cp configs/fusion_v2_standard.fragment candidate/
           cp configs/fusion_v2_release.policy candidate/
+          cp aki/*.zip candidate/
+          cp aki/*.zip.sha256 candidate/
+          cp aki/DO_NOT_FLASH_ANDROID17_103.txt candidate/
 
           if test -f "$DIST/build.log"; then
             gzip -9 -c "$DIST/build.log" > candidate/build.log.gz
