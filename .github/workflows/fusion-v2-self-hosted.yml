@@ -1,6 +1,7 @@
 name: Fusion V2 Self-hosted Persistent OKI
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -13,7 +14,7 @@ concurrency:
 jobs:
   build:
     name: Persistent sun perf build + strict static gate
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, x64, op13-oki]
     timeout-minutes: 330
 
     steps:
@@ -41,6 +42,7 @@ jobs:
         with:
           fetch-depth: 1
           clean: true
+          ref: integration/resukisu-susfs23-kpatchnext
 
       - name: Ensure build dependencies
         run: |
@@ -162,7 +164,7 @@ jobs:
           fi
 
           {
-            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "control_repo_commit=$(git rev-parse HEAD)"
             echo "runner_name=${RUNNER_NAME}"
             echo "runner_arch=${RUNNER_ARCH}"
             echo "persistent_oki_workspace=$OKI_WORKSPACE"
@@ -195,7 +197,7 @@ jobs:
           cp "$OKI_WORKSPACE"/manifest-pinned.xml failure-evidence/ 2>/dev/null || true
           cp "$OKI_WORKSPACE"/manifest-pinned.xml.sha256 failure-evidence/ 2>/dev/null || true
           {
-            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "control_repo_commit=$(git rev-parse HEAD)"
             echo "runner_name=${RUNNER_NAME}"
             echo "persistent_oki_workspace=$OKI_WORKSPACE"
           } > failure-evidence/CI_FAILURE_PROVENANCE.txt
