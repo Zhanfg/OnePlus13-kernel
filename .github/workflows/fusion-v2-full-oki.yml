@@ -2,18 +2,6 @@ name: Fusion V2 Complete OnePlus OKI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - integration/resukisu-susfs23-kpatchnext
-    paths:
-      - '.github/workflows/fusion-v2-full-oki.yml'
-      - 'scripts/fusion_v2.sh'
-      - 'scripts/build_fusion_v2_oki.sh'
-      - 'scripts/apply_fusion_v2_standard_config.sh'
-      - 'scripts/verify_fusion_v2_image.sh'
-      - 'scripts/verify_fusion_v2_release.sh'
-      - 'configs/fusion_v2_**'
-      - 'configs/oneplus_13_16.0.9.401.lock'
 
 permissions:
   contents: read
@@ -86,6 +74,17 @@ jobs:
           bash -n scripts/apply_fusion_v2_standard_config.sh
           bash -n scripts/verify_fusion_v2_image.sh
           bash -n scripts/verify_fusion_v2_release.sh
+
+      - name: Full OKI storage gate
+        run: |
+          set -euo pipefail
+          free_bytes="$(df -PB1 "$GITHUB_WORKSPACE" | awk 'NR==2 {print $4}')"
+          min_bytes=$((80 * 1024 * 1024 * 1024))
+          echo "free_bytes=$free_bytes"
+          if (( free_bytes < min_bytes )); then
+            echo "::error::Not enough disk for OnePlus complete OKI. Previous attempt ran out of space cloning ReSukiSU; use the self-hosted/persistent workflow."
+            exit 1
+          fi
 
       - name: Build complete Fusion V2 OKI
         env:
