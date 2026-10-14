@@ -2,13 +2,28 @@ name: Build OnePlus 13 Fusion V2 AK3 candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      runner_mode:
+        description: "Choose runner: GitHub-hosted by default (no personal server needed)"
+        required: true
+        type: choice
+        default: github-hosted
+        options:
+          - github-hosted
+          - self-hosted
 
 permissions:
   contents: read
 
-# Manual-only launch from main. Fusion V2 source changes remain isolated in
-# its own integration branch until source/build/ABI/boot review is complete.
+# Manual-only launcher. Full pinned source and Image checks stay in the
+# Fusion integration branch. Neither route publishes a stable release.
 jobs:
-  build-candidate:
-    name: Full pinned OKI → Fusion V2 → KPatch-Next → AK3
+  github-hosted:
+    if: ${{ inputs.runner_mode != 'self-hosted' }}
+    name: GitHub-hosted full OKI → KSU+SUSFS → KPatch → AK3
+    uses: Zhanfg/OnePlus13-kernel/.github/workflows/fusion-v2-full-oki.yml@integration/resukisu-susfs23-kpatchnext
+
+  self-hosted:
+    if: ${{ inputs.runner_mode == 'self-hosted' }}
+    name: Optional persistent runner full OKI → AK3
     uses: Zhanfg/OnePlus13-kernel/.github/workflows/fusion-v2-self-hosted.yml@integration/resukisu-susfs23-kpatchnext
