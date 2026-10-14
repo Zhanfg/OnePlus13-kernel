@@ -170,7 +170,14 @@ jobs:
             echo '### Fusion V2 build phases (measured seconds)' >> "$GITHUB_STEP_SUMMARY"
             echo '| Phase | Seconds | Status |' >> "$GITHUB_STEP_SUMMARY"
             echo '|---|---:|---|' >> "$GITHUB_STEP_SUMMARY"
-            tail -n +2 oki/fusion-stage-timings.tsv | while IFS=
+            tail -n +2 oki/fusion-stage-timings.tsv | while IFS="$(printf '\t')" read -r stage seconds status; do
+              echo "| $stage | $seconds | $status |" >> "$GITHUB_STEP_SUMMARY"
+            done
+            cat oki/fusion-stage-timings.tsv
+          fi
+          df -h "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
+
+      - name: Prune persistent Bazel caches
         if: always()
         run: |
           python3 - <<'PY'
