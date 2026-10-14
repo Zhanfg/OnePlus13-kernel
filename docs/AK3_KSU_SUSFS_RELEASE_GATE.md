@@ -12,7 +12,7 @@ Status: packaging integration and host-side regression are complete. A **newly c
 
 ## Required runner
 
-Full official OnePlus OKI requires Linux x86_64 self-hosted runner labeled self-hosted/linux/x64/op13-oki; 80 GiB of free storage minimum, 150 GiB recommended. Standard GitHub-hosted preflight cannot satisfy this. Host-only tests cannot generate a valid kernel Image.
+Default full-build path is a standard GitHub-hosted ubuntu-24.04 runner. Previous hosted run #36857811253 had about 107 GiB free after cleanup, synced the full OKI source and reached Bazel/Kleaf compilation; it did not fail because self-hosted was missing. We now use live disk diagnostics instead of imposing a blanket 80 GiB preflight. Storage exhaustion is still possible at compile time; monitor usage and fail the build rather than publishing any incomplete Image. A persistent x86_64 self-hosted runner (labels self-hosted/linux/x64/op13-oki; >=80 GiB free, >=150 GiB preferred) remains an optional recovery/acceleration route, not a prerequisite. Host-only packaging tests do not produce an Image.
 
 ## Verified AK3 safety measures
 
