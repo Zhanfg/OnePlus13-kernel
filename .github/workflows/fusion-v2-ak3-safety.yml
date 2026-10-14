@@ -22,6 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n scripts/pack_fusion_v2_ak3.sh
+          bash -n scripts/harden_fusion_ak3_template.sh
           python3 -m py_compile scripts/validate_fusion_ak3_template.py tests/test_fusion_ak3_template.py
       - name: Inspect pinned template routing (non-flash)
         run: |
@@ -29,6 +30,18 @@ jobs:
             grep -E '(^|[[:space:]])(do.devicecheck|device.name[0-9]*|block|split_boot|flash_boot|flash_generic|patch_vbmeta_flag)' || true
       - name: Audit pinned legacy AK3 ZIP itself
         run: python3 scripts/validate_fusion_ak3_template.py releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip --source-template
+      - name: Harden real pinned template and validate resulting AK3 installer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/real-ak3"
+          unzip -q releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip -d "$RUNNER_TEMP/real-ak3"
+          bash scripts/harden_fusion_ak3_template.sh "$RUNNER_TEMP/real-ak3/anykernel.sh"
+          (
+            cd "$RUNNER_TEMP/real-ak3"
+            zip -q -r9 "$RUNNER_TEMP/hardened-template.zip" .
+          )
+          python3 scripts/validate_fusion_ak3_template.py "$RUNNER_TEMP/hardened-template.zip"
+          echo "Template verification is structural only; stale reference Image is never a release payload."
       - name: Exercise malicious and valid installer fixtures
         run: python3 tests/test_fusion_ak3_template.py
       - name: Confirm no unverified kernel image is accepted
