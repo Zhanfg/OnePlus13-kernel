@@ -117,6 +117,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/aki"
+          export KERNEL_PLATFORM="$OKI_WORKSPACE/kernel_platform"
+          export KPTOOLS="$FUSION_WORK_DIR/deps/kpatch-next/tools/build/host/kptools"
           bash scripts/pack_fusion_v2_ak3.sh \
             "$OKI_WORKSPACE/out/dist/Image.kpatch-next" \
             "$GITHUB_WORKSPACE/releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip" \
