@@ -82,7 +82,9 @@ sync_oki() {
   repo init -u "$control_repo" -b "$control_branch" -m "$pinned_manifest"
   cmp -s "$ROOT_DIR/$pinned_manifest" "$OKI/.repo/manifests/$pinned_manifest" ||
     die "remote manifest diverges from local reviewed snapshot"
-  repo sync -c --no-clone-bundle --no-tags -j"${SYNC_JOBS:-$(nproc)}"
+  if ! bash "$ROOT_DIR/scripts/repo_sync_pinned_retry.sh" 2>&1 | tee "$OKI/repo-sync-last.log"; then
+    die "pinned source sync failed; evidence=$OKI/repo-sync-last.log"
+  fi
   repo manifest -r -o manifest-pinned.xml
   sha256sum manifest-pinned.xml > manifest-pinned.xml.sha256
 

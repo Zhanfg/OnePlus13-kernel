@@ -3,6 +3,14 @@ name: Fusion V2 Complete OnePlus OKI
 on:
   workflow_call:
   workflow_dispatch:
+  # Run a full hosted verification after a reviewed source-sync repair merges.
+  push:
+    branches:
+      - integration/resukisu-susfs23-kpatchnext
+    paths:
+      - 'scripts/repo_sync_pinned_retry.sh'
+      - 'scripts/build_fusion_v2_oki.sh'
+      - '.github/workflows/fusion-v2-full-oki.yml'
 
 permissions:
   contents: read
@@ -71,6 +79,7 @@ jobs:
       - name: Shell syntax gate
         run: |
           set -euo pipefail
+          bash -n scripts/repo_sync_pinned_retry.sh
           bash -n scripts/fusion_v2.sh
           bash -n scripts/build_fusion_v2_oki.sh
           bash -n scripts/apply_fusion_v2_standard_config.sh
@@ -235,6 +244,7 @@ jobs:
           name: fusion-v2-failure-evidence-${{ github.run_number }}
           path: |
             oki/build_fusion_v2_*.log
+            oki/repo-sync-last.log
             oki/out/dist/*.txt
             oki/out/dist/*.config
             oki/manifest-pinned.xml
