@@ -18,6 +18,45 @@ log() { printf '[fusion-v2-oki] %s\n' "$*"; }
 die() { printf '[fusion-v2-oki][ERROR] %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
+# Record real elapsed wall time by phase, including the phase that failed.
+# Keep measurements outside out/dist because a clean compile removes it.
+CURRENT_STAGE=""
+STAGE_START=0
+STAGE_LOG="$OKI/fusion-stage-timings.tsv"
+
+stage_end() {
+  local result="$1" now elapsed
+  [[ -n "$CURRENT_STAGE" ]] || return 0
+  now="$(date +%s)"
+  elapsed=$((now - STAGE_START))
+  printf '%s\t%s\t%s\n' "$CURRENT_STAGE" "$elapsed" "$result" >> "$STAGE_LOG"
+  log "stage=$CURRENT_STAGE elapsed_seconds=$elapsed result=$result"
+  CURRENT_STAGE=""
+}
+
+stage_begin() {
+  local name="$1"
+  stage_end success
+  mkdir -p "$OKI"
+  if (( STAGE_START == 0 )); then
+    # New invocation: overwrite previous timings on a persistent runner.
+    printf 'stage\tseconds\tstatus\n' > "$STAGE_LOG"
+  fi
+  CURRENT_STAGE="$name"
+  STAGE_START="$(date +%s)"
+  log "stage=$name begin"
+}
+
+record_exit() {
+  local rc="$?"
+  if (( rc == 0 )); then
+    stage_end success || true
+  else
+    stage_end failure || true
+  fi
+}
+trap record_exit EXIT
+
 usage() {
   cat <<EOF
 Usage: OKI_WORKSPACE=/path/to/op13-oki bash scripts/build_fusion_v2_oki.sh <action>
@@ -149,8 +188,16 @@ build_oki() {
   verify_build_platform
   ensure_abogki_tags
 
+  # Always erase the final dist so an old Image cannot be packaged.
   rm -rf "$OKI/out/dist"
-  rm -rf "$OKI/kernel_platform/out/msm-kernel-sun-perf"
+  # GitHub-hosted runners have no prior output. A persistent self-hosted
+  # runner may explicitly preserve Bazel outputs: action keys and the final
+  # Image/IKCONFIG/KPatch gates still validate every source/config change.
+  if [[ "${FUSION_INCREMENTAL_BUILD:-0}" == "1" ]]; then
+    log "Bazel output reuse requested (incremental mode); final Image remains clean"
+  else
+    rm -rf "$OKI/kernel_platform/out/msm-kernel-sun-perf"
+  fi
   mkdir -p "$OKI/out/dist"
 
   local stamp log_file
@@ -215,11 +262,11 @@ kpatch_image() {
 }
 
 case "$ACTION" in
-  sync) sync_oki ;;
-  prepare) prepare_tree ;;
-  build) build_oki ;;
-  kpatch) kpatch_image ;;
-  all) sync_oki; prepare_tree; build_oki; kpatch_image ;;
+  sync) stage_begin sync; sync_oki ;;
+  prepare) stage_begin prepare; prepare_tree ;;
+  build) stage_begin build; build_oki ;;
+  kpatch) stage_begin kpatch; kpatch_image ;;
+  all) stage_begin sync; sync_oki; stage_begin prepare; prepare_tree; stage_begin build; build_oki; stage_begin kpatch; kpatch_image ;;
   help|-h|--help) usage ;;
   *) usage; die "unknown action: $ACTION" ;;
 esac
