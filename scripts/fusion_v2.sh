@@ -40,17 +40,25 @@ EOF
 
 clone_pinned() {
   local name="$1" repo="$2" commit="$3" dest="$4"
-  if [[ -d "$dest/.git" ]]; then
-    log "reuse $name cache: $dest"
-  else
+  if [[ -d "$dest/.git" ]] &&
+     [[ "$(git -C "$dest" rev-parse HEAD)" == "$commit" ]] &&
+     [[ "$(git -C "$dest" remote get-url origin)" == "$repo" ]] &&
+     git -C "$dest" diff --quiet &&
+     git -C "$dest" diff --cached --quiet; then
+    log "reuse $name exact verified pin without remote fetch: $commit"
+    return 0
+  fi
+  if [[ ! -d "$dest/.git" ]]; then
     rm -rf "$dest"
-    git clone --filter=blob:none --no-checkout "$repo" "$dest"
+    git clone --filter=blob:none --depth=1 --no-checkout "$repo" "$dest"
   fi
   git -C "$dest" fetch --force --depth=1 origin "$commit"
   git -C "$dest" checkout --detach "$commit"
   local actual
   actual="$(git -C "$dest" rev-parse HEAD)"
   [[ "$actual" == "$commit" ]] || die "$name pin mismatch: expected $commit got $actual"
+  [[ "$(git -C "$dest" remote get-url origin)" == "$repo" ]] ||
+    die "$name origin changed unexpectedly"
   log "$name pinned at $actual"
 }
 
@@ -100,10 +108,13 @@ install_resukisu() {
   local kconfig="$common/drivers/Kconfig"
 
   [[ -f "$makefile" && -f "$kconfig" ]] || die "common drivers Makefile/Kconfig missing"
+  # fetch_deps() has already resolved the exact ReSukiSU SHA. Reuse that
+  # verified local checkout rather than fetching the same upstream twice.
+  [[ -d "$DEPS_DIR/resukisu/.git" ]] || die "pinned ReSukiSU checkout missing"
+  [[ "$(git -C "$DEPS_DIR/resukisu" rev-parse HEAD)" == "$RESUKISU_COMMIT" ]] ||
+    die "cached ReSukiSU SHA mismatch"
   rm -rf "$dst"
-  git clone --no-checkout "$RESUKISU_REPO" "$dst"
-  git -C "$dst" fetch --force --depth=1 origin "$RESUKISU_COMMIT"
-  git -C "$dst" checkout --detach "$RESUKISU_COMMIT"
+  cp -a "$DEPS_DIR/resukisu" "$dst"
   [[ "$(git -C "$dst" rev-parse HEAD)" == "$RESUKISU_COMMIT" ]] || die "ReSukiSU checkout mismatch"
 
   rm -rf "$common/drivers/kernelsu"
@@ -181,14 +192,18 @@ build_kpatch_next() {
   export TARGET_COMPILE
   (
     cd "$kp/kernel"
-    make clean
+    if [[ "${FUSION_INCREMENTAL_BUILD:-0}" != "1" ]]; then
+      make clean
+    fi
     make
   )
 
   # Offline Image patcher must run on the build host.
   (
     cd "$kp/tools"
-    rm -rf build/host
+    if [[ "${FUSION_INCREMENTAL_BUILD:-0}" != "1" ]]; then
+      rm -rf build/host
+    fi
     cmake -S . -B build/host -DCMAKE_BUILD_TYPE=Release
     cmake --build build/host --parallel
   )
