@@ -38,7 +38,8 @@ stage_begin() {
   local name="$1"
   stage_end success
   mkdir -p "$OKI"
-  if [[ ! -e "$STAGE_LOG" ]]; then
+  if (( STAGE_START == 0 )); then
+    # New invocation: overwrite previous timings on a persistent runner.
     printf 'stage\tseconds\tstatus\n' > "$STAGE_LOG"
   fi
   CURRENT_STAGE="$name"
