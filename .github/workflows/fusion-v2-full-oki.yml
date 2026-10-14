@@ -210,8 +210,8 @@ jobs:
               print(f'{base}: before={before} after={total} limit={limit_bytes}')
 
           # Keep total GitHub cache comfortably below the repository cache quota.
-          prune('.fusion-cache/bazel-disk', 3_500 * 1024 * 1024)
-          prune('.fusion-cache/bazel-repository', 1_000 * 1024 * 1024)
+          prune('.fusion-cache/bazel-disk', 2_300 * 1024 * 1024)
+          prune('.fusion-cache/bazel-repository', 500 * 1024 * 1024)
           PY
           du -sh .fusion-cache/* 2>/dev/null || true
 
