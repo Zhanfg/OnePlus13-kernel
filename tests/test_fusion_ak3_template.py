@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as td:
         {**BASE, "../anykernel.sh": "bad"},
         {**BASE, "dtbo.img": "bad"},
         {**BASE, "vbmeta.img": "bad"},
-        {**BASE, "anykernel.sh": SCRIPT.replace("device.name1=sun", "device.name1=cheetah")},
+        {**BASE, "anykernel.sh": SCRIPT.replace("device.name1=sun", "device.name1=cheetah").replace("device.name2=PJZ110", "device.name2=other")},
         {**BASE, "anykernel.sh": SCRIPT.replace("do.devicecheck=1", "do.devicecheck=0")},
         {**BASE, "anykernel.sh": SCRIPT.replace("block=boot", "block=vendor_boot")},
         {**BASE, "anykernel.sh": SCRIPT + "\nflash_generic vendor_boot\n"},
