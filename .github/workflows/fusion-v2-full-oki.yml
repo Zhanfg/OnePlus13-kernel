@@ -194,6 +194,21 @@ jobs:
           cat candidate/static-gate.txt
           cat candidate/CI_PROVENANCE.txt
 
+      - name: Package verified OnePlus 13 AK3 experimental candidate
+        if: success()
+        run: |
+          set -euo pipefail
+          export KERNEL_PLATFORM="$GITHUB_WORKSPACE/oki/kernel_platform"
+          export KPTOOLS="$GITHUB_WORKSPACE/.work/fusion-v2/deps/kpatch-next/tools/build/host/kptools"
+          mkdir -p "$GITHUB_WORKSPACE/ak3"
+          bash scripts/pack_fusion_v2_ak3.sh \
+            "$GITHUB_WORKSPACE/oki/out/dist/Image.kpatch-next" \
+            "$GITHUB_WORKSPACE/releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip" \
+            "$GITHUB_WORKSPACE/ak3"
+          cp ak3/*.zip ak3/*.zip.sha256 candidate/
+          echo 'EXPERIMENTAL - DO NOT FLASH TO ANDROID 17 .103 BEFORE KMI, BOOT AND RUNTIME VERIFICATION' > candidate/DO_NOT_FLASH_ANDROID17_103.txt
+          sha256sum candidate/* > candidate/SHA256SUMS.txt
+
       - name: Upload Fusion V2 static candidate
         if: success()
         uses: actions/upload-artifact@v4
