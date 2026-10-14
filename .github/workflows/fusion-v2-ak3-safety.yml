@@ -1,0 +1,43 @@
+name: Fusion V2 AK3 package safety checks
+
+on:
+  push:
+    branches:
+      - release/ak3-verified-fusion-v2-20261014
+  pull_request:
+    branches:
+      - integration/resukisu-susfs23-kpatchnext
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ak3-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify packaging scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/pack_fusion_v2_ak3.sh
+          python3 -m py_compile scripts/validate_fusion_ak3_template.py tests/test_fusion_ak3_template.py
+      - name: Exercise malicious and valid installer fixtures
+        run: python3 tests/test_fusion_ak3_template.py
+      - name: Confirm no unverified kernel image is accepted
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fake"
+          truncate -s 26000000 "$RUNNER_TEMP/fake/Image.kpatch-next"
+          if bash scripts/pack_fusion_v2_ak3.sh "$RUNNER_TEMP/fake/Image.kpatch-next" > "$RUNNER_TEMP/refusal.txt" 2>&1; then
+            cat "$RUNNER_TEMP/refusal.txt"
+            echo "::error::Packager accepted a fabricated kernel image"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/refusal.txt"
+          echo "PASS: no flashable AK3 produced without a verified Image"
+      - name: Explain scope
+        run: |
+          echo "PASS only covers AK3 installer structure and validation guard."
+          echo "Does NOT imply the kernel builds, KSU+SUSFS runs, or Android 17 .103 is supported."
