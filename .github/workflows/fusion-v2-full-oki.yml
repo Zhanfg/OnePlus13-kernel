@@ -1,0 +1,351 @@
+name: Fusion V2 Complete OnePlus OKI
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  # Run a full hosted verification after a reviewed source-sync repair merges.
+  push:
+    branches:
+      - integration/resukisu-susfs23-kpatchnext
+    paths:
+      - 'scripts/repo_sync_pinned_retry.sh'
+      - 'scripts/build_fusion_v2_oki.sh'
+      - '.github/workflows/fusion-v2-full-oki.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fusion-v2-full-oki-${{ github.ref }}
+  # Keep a currently-running full OKI build alive. A newer cache/config commit waits
+  # instead of throwing away an hour-long source sync/build.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Complete sun perf build + strict static gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+
+    steps:
+      - name: Checkout control repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: integration/resukisu-susfs23-kpatchnext
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup 2>/dev/null || true
+          sudo apt-get clean
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            bc bison build-essential ca-certificates ccache cmake cpio curl file flex git jq \
+            libelf-dev libncurses-dev libssl-dev lz4 lzip python3 rsync unzip zip zlib1g-dev zstd \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - name: Install repo tool
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      # GitHub-hosted runners are ephemeral; cache only bare Git object stores,
+      # never mutable worktrees or entire .repo metadata. repo sync will verify
+      # every pinned commit after restore. Split by source class and enforce
+      # upload budgets to avoid consuming all GitHub cache quota.
+      - name: Restore pinned Clang Git objects
+        id: src-clang
+        uses: actions/cache/restore@v4
+        with:
+          path: oki/.repo/project-objects/kernelplatform/prebuilts-master/clang/host/linux-x86.git
+          key: op13-src-clang-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-${{ github.run_id }}
+          restore-keys: |
+            op13-src-clang-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-
+
+      - name: Restore pinned build tools Git objects
+        id: src-tools
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            oki/.repo/project-objects/kernel_platform/prebuilts/clang-tools.git
+            oki/.repo/project-objects/kernel_platform/prebuilts/build-tools.git
+            oki/.repo/project-objects/kernel/prebuilts/build-tools.git
+          key: op13-src-tools-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-${{ github.run_id }}
+          restore-keys: |
+            op13-src-tools-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-
+
+      - name: Restore pinned OnePlus OSS Git objects
+        id: src-oss
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            oki/.repo/project-objects/android_kernel_common_oneplus_sm8750.git
+            oki/.repo/project-objects/android_kernel_oneplus_sm8750.git
+            oki/.repo/project-objects/android_kernel_modules_and_devicetree_oneplus_sm8750.git
+          key: op13-src-oss-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-${{ github.run_id }}
+          restore-keys: |
+            op13-src-oss-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-
+
+      - name: Restore Bazel caches
+        id: bazel-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .fusion-cache/bazel-disk
+            .fusion-cache/bazel-repository
+          key: fusion-v2-bazel-v2-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.run_id }}
+          restore-keys: |
+            fusion-v2-bazel-v2-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-
+
+      - name: Prepare Bazel cache directories
+        run: |
+          mkdir -p \
+            "$GITHUB_WORKSPACE/.fusion-cache/bazel-disk" \
+            "$GITHUB_WORKSPACE/.fusion-cache/bazel-repository" \
+            "$GITHUB_WORKSPACE/.bazel-output-user-root"
+          echo "cache_hit=${{ steps.bazel-cache-restore.outputs.cache-hit }}"
+          echo "clang_source_cache_exact_hit=${{ steps.src-clang.outputs.cache-hit }}"
+          echo "tools_source_cache_exact_hit=${{ steps.src-tools.outputs.cache-hit }}"
+          echo "oss_source_cache_exact_hit=${{ steps.src-oss.outputs.cache-hit }}"
+          bash scripts/fusion_cache_status.sh
+
+      - name: Shell syntax gate
+        run: |
+          set -euo pipefail
+          bash -n scripts/fusion_cache_status.sh
+          bash -n scripts/fusion_cache_budget.sh
+          bash -n scripts/repo_sync_pinned_retry.sh
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/build_fusion_v2_oki.sh
+          bash -n scripts/apply_fusion_v2_standard_config.sh
+          bash -n scripts/verify_fusion_v2_image.sh
+          bash -n scripts/verify_fusion_v2_release.sh
+
+      - name: Hosted runner storage diagnostics
+        run: |
+          set -euo pipefail
+          free_bytes="$(df -PB1 "$GITHUB_WORKSPACE" | awk 'NR==2 {print $4}')"
+          echo "initial_free_bytes=$free_bytes"
+          df -h "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
+          # A fixed 80-GiB gate is not a minimum proven by the kernel build.
+          # Previous hosted builds reached Bazel/Kleaf without a self-hosted runner.
+          # Keep a conservative fail-fast minimum for source sync and write scratch
+          # but do not require an arbitrary dedicated-machine disk allocation.
+          min_bytes=$((18 * 1024 * 1024 * 1024))
+          if (( free_bytes < min_bytes )); then
+            echo "::error::Free disk is below 18 GiB; stop before source sync. Use a runner with more disk or free cached images."
+            exit 1
+          fi
+          if (( free_bytes < 80 * 1024 * 1024 * 1024 )); then
+            echo "::warning::Hosted OKI may still exhaust disk while building vendor targets; monitor usage. Self-hosted is optional, not required."
+          fi
+
+      - name: Build complete Fusion V2 OKI
+        env:
+          OKI_WORKSPACE: ${{ github.workspace }}/oki
+          SYNC_JOBS: '4'
+          TARGET_COMPILE: aarch64-linux-gnu-
+          FUSION_WORK_DIR: ${{ github.workspace }}/.work/fusion-v2
+          # OnePlus build_with_bazel.py recognizes --cache_dir itself and forwards
+          # the remaining options to Bazel/Kleaf. The portable disk cache survives
+          # clean output trees; repository_cache avoids re-downloading Bazel externals.
+          EXTRA_KBUILD_ARGS: >-
+            --cache_dir=${{ github.workspace }}/.bazel-output-user-root
+            --disk_cache=${{ github.workspace }}/.fusion-cache/bazel-disk
+            --repository_cache=${{ github.workspace }}/.fusion-cache/bazel-repository
+        run: |
+          set -euo pipefail
+          bash scripts/build_fusion_v2_oki.sh all
+
+      - name: Report stage timing and disk consumption
+        if: always()
+        run: |
+          if [[ -f oki/fusion-stage-timings.tsv ]]; then
+            echo '### Fusion V2 build phases (measured seconds)' >> "$GITHUB_STEP_SUMMARY"
+            echo '| Phase | Seconds | Status |' >> "$GITHUB_STEP_SUMMARY"
+            echo '|---|---:|---|' >> "$GITHUB_STEP_SUMMARY"
+            tail -n +2 oki/fusion-stage-timings.tsv | while IFS="$(printf '\t')" read -r stage seconds status; do
+              echo "| $stage | $seconds | $status |" >> "$GITHUB_STEP_SUMMARY"
+            done
+            cat oki/fusion-stage-timings.tsv
+          fi
+          df -h "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
+
+      - name: Prune persistent Bazel caches
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def prune(root: str, limit_bytes: int) -> None:
+              base = Path(root)
+              if not base.exists():
+                  return
+              files = []
+              total = 0
+              for p in base.rglob('*'):
+                  try:
+                      if p.is_file() and not p.is_symlink():
+                          st = p.stat()
+                          total += st.st_size
+                          files.append((st.st_mtime_ns, st.st_size, p))
+                  except FileNotFoundError:
+                      pass
+              before = total
+              if total > limit_bytes:
+                  for _, size, p in sorted(files):
+                      try:
+                          p.unlink()
+                          total -= size
+                      except FileNotFoundError:
+                          pass
+                      if total <= limit_bytes:
+                          break
+              print(f'{base}: before={before} after={total} limit={limit_bytes}')
+
+          # Keep total GitHub cache comfortably below the repository cache quota.
+          prune('.fusion-cache/bazel-disk', 2_300 * 1024 * 1024)
+          prune('.fusion-cache/bazel-repository', 500 * 1024 * 1024)
+          PY
+          du -sh .fusion-cache/* 2>/dev/null || true
+
+      - name: Measure and budget restored source + Bazel caches
+        if: always()
+        id: cache-budget
+        run: |
+          bash scripts/fusion_cache_status.sh
+          bash scripts/fusion_cache_budget.sh
+          {
+            echo "### Fusion V2 cache"
+            echo "- Clang cache exact hit: ${{ steps.src-clang.outputs.cache-hit }}"
+            echo "- Toolchain cache exact hit: ${{ steps.src-tools.outputs.cache-hit }}"
+            echo "- OnePlus OSS cache exact hit: ${{ steps.src-oss.outputs.cache-hit }}"
+            echo "- Bazel cache exact hit: ${{ steps.bazel-cache-restore.outputs.cache-hit }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save Clang Git objects
+        if: always() && steps.cache-budget.outputs.clang_cache_ok == 'true' && steps.src-clang.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: oki/.repo/project-objects/kernelplatform/prebuilts-master/clang/host/linux-x86.git
+          key: op13-src-clang-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-${{ github.run_id }}
+
+      - name: Save build tools Git objects
+        if: always() && steps.cache-budget.outputs.tools_cache_ok == 'true' && steps.src-tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            oki/.repo/project-objects/kernel_platform/prebuilts/clang-tools.git
+            oki/.repo/project-objects/kernel_platform/prebuilts/build-tools.git
+            oki/.repo/project-objects/kernel/prebuilts/build-tools.git
+          key: op13-src-tools-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-${{ github.run_id }}
+
+      - name: Save OnePlus OSS Git objects
+        if: always() && steps.cache-budget.outputs.oss_cache_ok == 'true' && steps.src-oss.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            oki/.repo/project-objects/android_kernel_common_oneplus_sm8750.git
+            oki/.repo/project-objects/android_kernel_oneplus_sm8750.git
+            oki/.repo/project-objects/android_kernel_modules_and_devicetree_oneplus_sm8750.git
+          key: op13-src-oss-v1-${{ runner.os }}-${{ hashFiles('manifests/oneplus_13_b_20261013_pinned.xml') }}-${{ github.run_id }}
+
+      - name: Save Bazel caches
+        if: always() && steps.cache-budget.outputs.bazel_cache_ok == 'true' && steps.bazel-cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .fusion-cache/bazel-disk
+            .fusion-cache/bazel-repository
+          key: fusion-v2-bazel-v2-${{ runner.os }}-${{ hashFiles('configs/oneplus_13_16.0.9.401.lock', 'configs/fusion_v2_sources.lock', 'configs/fusion_v2_root.fragment', 'configs/fusion_v2_standard.fragment') }}-${{ github.run_id }}
+
+      - name: Assemble static candidate evidence
+        if: success()
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          DIST="$GITHUB_WORKSPACE/oki/out/dist"
+          test -s "$DIST/Image"
+          test -s "$DIST/Image.kpatch-next"
+          test -s "$DIST/static-gate.txt"
+
+          cp "$DIST/Image" candidate/Image.raw
+          cp "$DIST/Image.kpatch-next" candidate/Image
+          cp "$DIST/Image.kpatch-next.kpatch-info.txt" candidate/ 2>/dev/null || true
+          cp "$DIST/Image.kpatch-next.sha256" candidate/ 2>/dev/null || true
+          cp "$DIST/Image.sha256" candidate/ 2>/dev/null || true
+          cp "$DIST/Image.version.txt" candidate/ 2>/dev/null || true
+          cp "$DIST/fusion-v2-resolved.config" candidate/ 2>/dev/null || true
+          cp "$DIST/manifest-pinned.xml" candidate/ 2>/dev/null || true
+          cp "$DIST/manifest-pinned.xml.sha256" candidate/ 2>/dev/null || true
+          cp "$DIST/fusion-common.commit" candidate/ 2>/dev/null || true
+          cp "$DIST/msm-kernel.commit" candidate/ 2>/dev/null || true
+          cp "$DIST/static-gate.txt" candidate/
+          cp oki/fusion-stage-timings.tsv candidate/
+          cp configs/fusion_v2_sources.lock candidate/
+          cp configs/fusion_v2_root.fragment candidate/
+          cp configs/fusion_v2_standard.fragment candidate/
+          cp configs/fusion_v2_release.policy candidate/
+
+          if test -f "$DIST/build.log"; then
+            gzip -9 -c "$DIST/build.log" > candidate/build.log.gz
+          fi
+
+          {
+            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "bazel_cache_restore_hit=${{ steps.bazel-cache-restore.outputs.cache-hit }}"
+            echo "raw_image_sha256=$(sha256sum candidate/Image.raw | awk '{print $1}')"
+            echo "patched_image_sha256=$(sha256sum candidate/Image | awk '{print $1}')"
+            echo "raw_image_size=$(stat -c '%s' candidate/Image.raw)"
+            echo "patched_image_size=$(stat -c '%s' candidate/Image)"
+          } > candidate/CI_PROVENANCE.txt
+
+          sha256sum candidate/* > candidate/SHA256SUMS.txt
+          cat candidate/static-gate.txt
+          cat candidate/CI_PROVENANCE.txt
+
+      - name: Package verified OnePlus 13 AK3 experimental candidate
+        if: success()
+        run: |
+          set -euo pipefail
+          export KERNEL_PLATFORM="$GITHUB_WORKSPACE/oki/kernel_platform"
+          export KPTOOLS="$GITHUB_WORKSPACE/.work/fusion-v2/deps/kpatch-next/tools/build/host/kptools"
+          mkdir -p "$GITHUB_WORKSPACE/ak3"
+          bash scripts/pack_fusion_v2_ak3.sh \
+            "$GITHUB_WORKSPACE/oki/out/dist/Image.kpatch-next" \
+            "$GITHUB_WORKSPACE/releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip" \
+            "$GITHUB_WORKSPACE/ak3"
+          cp ak3/*.zip ak3/*.zip.sha256 candidate/
+          echo 'EXPERIMENTAL - DO NOT FLASH TO ANDROID 17 .103 BEFORE KMI, BOOT AND RUNTIME VERIFICATION' > candidate/DO_NOT_FLASH_ANDROID17_103.txt
+          sha256sum candidate/* > candidate/SHA256SUMS.txt
+
+      - name: Upload Fusion V2 static candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v2-static-candidate-${{ github.run_number }}
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v2-failure-evidence-${{ github.run_number }}
+          path: |
+            oki/build_fusion_v2_*.log
+            oki/repo-sync-last.log
+            oki/fusion-stage-timings.tsv
+            oki/out/dist/*.txt
+            oki/out/dist/*.config
+            oki/manifest-pinned.xml
+            oki/manifest-pinned.xml.sha256
+          if-no-files-found: ignore
+          retention-days: 7

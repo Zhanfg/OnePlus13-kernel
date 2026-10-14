@@ -1,0 +1,20 @@
+# OnePlus 13 / sun / PJZ110 / ColorOS 16.0.9.401 complete OKI base
+MANIFEST_REPO=https://github.com/OnePlusOSS/kernel_manifest.git
+MANIFEST_BRANCH=oneplus/sm8750
+MANIFEST_FILE=oneplus_13_b.xml
+
+ONEPLUS_COMMON_REPO=https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750.git
+ONEPLUS_COMMON_BRANCH=oneplus/sm8750_b_16.0.0_oneplus_13
+ONEPLUS_COMMON_SHA=e1b346b6b4f4096eb342ae3684838a942fd6f6c4
+
+ONEPLUS_MSM_REPO=https://github.com/OnePlusOSS/android_kernel_oneplus_sm8750.git
+ONEPLUS_MSM_BRANCH=oneplus/sm8750_b_16.0.0_oneplus_13
+ONEPLUS_MSM_SHA=6028f47faddaa27700f8dd3a1d83906ea8f27170
+
+ONEPLUS_MODULES_REPO=https://github.com/OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8750.git
+ONEPLUS_MODULES_BRANCH=oneplus/sm8750_b_16.0.0_oneplus_13
+ONEPLUS_MODULES_SHA=d50b305f7da9e14715a25120a4ac7b1a4b8b97c3
+
+DEVICE_CODENAME=sun
+DEVICE_MODEL=PJZ110
+ROM_BASE=16.0.9.401
