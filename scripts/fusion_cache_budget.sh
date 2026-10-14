@@ -28,6 +28,6 @@ within oss_cache_ok 1800 \
   oki/.repo/project-objects/android_kernel_common_oneplus_sm8750.git \
   oki/.repo/project-objects/android_kernel_oneplus_sm8750.git \
   oki/.repo/project-objects/android_kernel_modules_and_devicetree_oneplus_sm8750.git
-within bazel_cache_ok 2400 \
+within bazel_cache_ok 3000 \
   .fusion-cache/bazel-disk \
   .fusion-cache/bazel-repository
