@@ -12,6 +12,7 @@ on:
       - 'scripts/fusion_cache_status.sh'
       - 'scripts/fusion_cache_budget.sh'
       - 'tests/test_fusion_cache_budget.sh'
+      - 'tests/test_fusion_workflow_structure.py'
   workflow_dispatch:
 
 permissions:
@@ -30,6 +31,8 @@ jobs:
           bash -n tests/test_fusion_cache_budget.sh
       - name: Test cache budgets and source integrity
         run: bash tests/test_fusion_cache_budget.sh
+      - name: Verify reusable workflow structure
+        run: python3 tests/test_fusion_workflow_structure.py
       - name: Inspect pinned source lock and post-sync source checks
         run: |
           set -euo pipefail
