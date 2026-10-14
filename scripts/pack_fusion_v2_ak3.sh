@@ -16,7 +16,7 @@ die() { printf '[fusion-v2-ak3][ERROR] %s\n' "$*" >&2; exit 1; }
 [[ -s "$TEMPLATE" ]] || die "AK3 template missing/empty: $TEMPLATE"
 [[ -f "$SOURCE_LOCK" && -f "$BASE_LOCK" ]] || die "source/base lock file missing"
 
-for tool in unzip zip sha256sum strings grep sed stat mktemp; do
+for tool in unzip zip sha256sum strings grep sed stat mktemp python3 file; do
   command -v "$tool" >/dev/null 2>&1 || die "required tool missing: $tool"
 done
 
@@ -24,6 +24,28 @@ done
 source "$SOURCE_LOCK"
 # shellcheck disable=SC1090
 source "$BASE_LOCK"
+
+# Never package an arbitrary or previously downloaded Image as the latest
+# KSU+SUSFS kernel. All of these must be produced by the SAME successful build.
+[[ "$(basename "$IMAGE")" == "Image.kpatch-next" ]] ||
+  die "expected the verified Image.kpatch-next from the Fusion V2 build"
+RAW_IMAGE="$(dirname "$IMAGE")/Image"
+STATIC_REPORT="$(dirname "$IMAGE")/static-gate.txt"
+[[ -s "$RAW_IMAGE" ]] || die "matching unpatched Image is missing"
+[[ -s "$STATIC_REPORT" ]] || die "strict static verification report is missing"
+grep -qF "Fusion V2 strict static Image verification: PASS" "$STATIC_REPORT" ||
+  die "static report does not contain the kernel image gate"
+grep -qF "release Image passed KPatch-Next/KPM policy checks" "$STATIC_REPORT" ||
+  die "static report does not contain the KPatch release gate"
+[[ -n "${KERNEL_PLATFORM:-}" && -n "${KPTOOLS:-}" ]] ||
+  die "set KERNEL_PLATFORM and KPTOOLS for independent verification"
+bash "$ROOT_DIR/scripts/verify_fusion_v2_image.sh" "$RAW_IMAGE" "$IMAGE" ||
+  die "kernel image verification failed"
+bash "$ROOT_DIR/scripts/verify_fusion_v2_release.sh" "$IMAGE" ||
+  die "KPatch-Next release verification failed"
+python3 "$ROOT_DIR/scripts/validate_fusion_ak3_template.py" "$TEMPLATE" ||
+  die "AK3 template security validation failed"
+
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
@@ -89,6 +111,7 @@ out="$OUT_DIR/OnePlus13-sun-FusionV2-Experimental-${stamp}.zip"
 packed_sha="$(unzip -p "$out" Image | sha256sum | awk '{print $1}')"
 [[ "$packed_sha" == "$image_sha" ]] || die "packed Image SHA mismatch: expected $image_sha got $packed_sha"
 
+unzip -t "$out" >/dev/null || die "final AK3 ZIP CRC verification failed"
 unzip -p "$out" anykernel.sh | grep -Fq "$kernel_string" || die "kernel.string verification failed"
 unzip -l "$out" | grep -q 'FUSION_V2_PROVENANCE.txt' || die "provenance file missing from final archive"
 
