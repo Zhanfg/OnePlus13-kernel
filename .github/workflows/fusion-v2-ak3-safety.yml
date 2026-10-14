@@ -23,6 +23,8 @@ jobs:
           set -euo pipefail
           bash -n scripts/pack_fusion_v2_ak3.sh
           python3 -m py_compile scripts/validate_fusion_ak3_template.py tests/test_fusion_ak3_template.py
+      - name: Audit pinned legacy AK3 ZIP itself
+        run: python3 scripts/validate_fusion_ak3_template.py releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
       - name: Exercise malicious and valid installer fixtures
         run: python3 tests/test_fusion_ak3_template.py
       - name: Confirm no unverified kernel image is accepted
