@@ -28,7 +28,7 @@ jobs:
           unzip -p releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip anykernel.sh |
             grep -E '(^|[[:space:]])(do.devicecheck|device.name[0-9]*|block|split_boot|flash_boot|flash_generic|patch_vbmeta_flag)' || true
       - name: Audit pinned legacy AK3 ZIP itself
-        run: python3 scripts/validate_fusion_ak3_template.py releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip
+        run: python3 scripts/validate_fusion_ak3_template.py releases/v6.6.118-OnePlus13-sun-AK3-OKI-VANILLA-20260723_2120.zip --source-template
       - name: Exercise malicious and valid installer fixtures
         run: python3 tests/test_fusion_ak3_template.py
       - name: Confirm no unverified kernel image is accepted
