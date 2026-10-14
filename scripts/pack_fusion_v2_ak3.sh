@@ -43,7 +43,7 @@ bash "$ROOT_DIR/scripts/verify_fusion_v2_image.sh" "$RAW_IMAGE" "$IMAGE" ||
   die "kernel image verification failed"
 bash "$ROOT_DIR/scripts/verify_fusion_v2_release.sh" "$IMAGE" ||
   die "KPatch-Next release verification failed"
-python3 "$ROOT_DIR/scripts/validate_fusion_ak3_template.py" "$TEMPLATE" ||
+python3 "$ROOT_DIR/scripts/validate_fusion_ak3_template.py" "$TEMPLATE" --source-template ||
   die "AK3 template security validation failed"
 
 
@@ -59,6 +59,18 @@ unzip -q "$TEMPLATE" -d "$stage"
 if [[ -e "$stage/vendor_boot.img" ]] || grep -Eiq 'flash_(generic|boot).*vendor_boot|vendor_boot\.img' "$stage/anykernel.sh"; then
   die "template contains vendor_boot payload/flashing logic; use an Image-only verified AK3 template"
 fi
+
+# The legacy reference installer had do.devicecheck=0 and empty device.name*
+# fields. Never inherit that permissive behavior into an experimental AK3.
+grep -Eq '^[[:space:]]*do\.devicecheck=' "$stage/anykernel.sh" ||
+  die "unknown legacy AK3 properties layout: missing devicecheck"
+grep -Eq '^[[:space:]]*device\.name1=' "$stage/anykernel.sh" ||
+  die "unknown legacy AK3 properties layout: missing device.name1"
+grep -Eq '^[[:space:]]*device\.name2=' "$stage/anykernel.sh" ||
+  die "unknown legacy AK3 properties layout: missing device.name2"
+sed -i -E 's/^([[:space:]]*do\.devicecheck=).*/\11/' "$stage/anykernel.sh"
+sed -i -E 's/^([[:space:]]*device\.name1=).*/\1sun/' "$stage/anykernel.sh"
+sed -i -E 's/^([[:space:]]*device\.name2=).*/\1PJZ110/' "$stage/anykernel.sh"
 
 rm -f "$stage/Image" "$stage/Image.gz" "$stage/Image.lz4" "$stage/Image-dtb"
 cp "$IMAGE" "$stage/Image"
@@ -112,6 +124,7 @@ packed_sha="$(unzip -p "$out" Image | sha256sum | awk '{print $1}')"
 [[ "$packed_sha" == "$image_sha" ]] || die "packed Image SHA mismatch: expected $image_sha got $packed_sha"
 
 unzip -t "$out" >/dev/null || die "final AK3 ZIP CRC verification failed"
+python3 "$ROOT_DIR/scripts/validate_fusion_ak3_template.py" "$out" || die "final AK3 device/partition security audit failed"
 unzip -p "$out" anykernel.sh | grep -Fq "$kernel_string" || die "kernel.string verification failed"
 unzip -l "$out" | grep -q 'FUSION_V2_PROVENANCE.txt' || die "provenance file missing from final archive"
 
