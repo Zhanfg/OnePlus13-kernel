@@ -25,7 +25,7 @@ DANGEROUS = re.compile(
 )
 ASSIGNMENT = re.compile(r"(?m)^\s*([A-Za-z0-9_.]+)\s*=\s*([^\r\n#]+)")
 
-def validate(filename: str) -> None:
+def validate(filename: str, *, allow_legacy_device_guard: bool = False) -> None:
     with zipfile.ZipFile(filename) as zf:
         members = zf.infolist()
         names = set()
@@ -51,11 +51,11 @@ def validate(filename: str) -> None:
         script = zf.read("anykernel.sh").decode("utf-8")
         props = {key: value.strip().strip("\"'") for key, value
                  in ASSIGNMENT.findall(script)}
-        if props.get("do.devicecheck") != "1":
+        if not allow_legacy_device_guard and props.get("do.devicecheck") != "1":
             raise ValueError("AK3 device check must be enabled")
         devices = [value.lower() for key, value in props.items()
                    if key.startswith("device.name")]
-        if not any(x in ("sun", "pjz110") for x in devices):
+        if not allow_legacy_device_guard and not any(x in ("sun", "pjz110") for x in devices):
             raise ValueError("AK3 device list must include sun/PJZ110")
         if not re.search(r"(?m)^\s*block\s*=\s*[\"']?boot[\"']?\s*(?:#.*)?$", script):
             raise ValueError("Image-only AK3 must explicitly use block=boot")
@@ -72,9 +72,10 @@ def validate(filename: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("template")
+    parser.add_argument("--source-template", action="store_true", help="audit original pinned ZIP before device guard is repaired")
     args = parser.parse_args()
     try:
-        validate(args.template)
+        validate(args.template, allow_legacy_device_guard=args.source_template)
     except (OSError, zipfile.BadZipFile, ValueError, UnicodeError, KeyError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         raise SystemExit(1)
