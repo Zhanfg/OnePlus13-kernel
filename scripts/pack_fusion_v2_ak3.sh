@@ -60,17 +60,7 @@ if [[ -e "$stage/vendor_boot.img" ]] || grep -Eiq 'flash_(generic|boot).*vendor_
   die "template contains vendor_boot payload/flashing logic; use an Image-only verified AK3 template"
 fi
 
-# The legacy reference installer had do.devicecheck=0 and empty device.name*
-# fields. Never inherit that permissive behavior into an experimental AK3.
-grep -Eq '^[[:space:]]*do\.devicecheck=' "$stage/anykernel.sh" ||
-  die "unknown legacy AK3 properties layout: missing devicecheck"
-grep -Eq '^[[:space:]]*device\.name1=' "$stage/anykernel.sh" ||
-  die "unknown legacy AK3 properties layout: missing device.name1"
-grep -Eq '^[[:space:]]*device\.name2=' "$stage/anykernel.sh" ||
-  die "unknown legacy AK3 properties layout: missing device.name2"
-sed -i -E 's/^([[:space:]]*do\.devicecheck=).*/\11/' "$stage/anykernel.sh"
-sed -i -E 's/^([[:space:]]*device\.name1=).*/\1sun/' "$stage/anykernel.sh"
-sed -i -E 's/^([[:space:]]*device\.name2=).*/\1PJZ110/' "$stage/anykernel.sh"
+bash "$ROOT_DIR/scripts/harden_fusion_ak3_template.sh" "$stage/anykernel.sh" || die "device guard upgrade failed"
 
 rm -f "$stage/Image" "$stage/Image.gz" "$stage/Image.lz4" "$stage/Image-dtb"
 cp "$IMAGE" "$stage/Image"
