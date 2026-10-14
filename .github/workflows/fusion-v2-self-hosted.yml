@@ -93,6 +93,8 @@ jobs:
       - name: Shell syntax gate
         run: |
           set -euo pipefail
+          bash -n scripts/fusion_cache_budget.sh
+          bash -n scripts/fusion_cache_status.sh
           bash -n scripts/fusion_v2.sh
           bash -n scripts/build_fusion_v2_oki.sh
           bash -n scripts/apply_fusion_v2_standard_config.sh
@@ -104,6 +106,7 @@ jobs:
         env:
           SYNC_JOBS: '8'
           TARGET_COMPILE: aarch64-linux-gnu-
+          FUSION_INCREMENTAL_BUILD: '1'
         run: |
           set -euo pipefail
           export EXTRA_KBUILD_ARGS="--cache_dir=$BAZEL_OUTPUT_USER_ROOT --disk_cache=$BAZEL_DISK_CACHE --repository_cache=$BAZEL_REPOSITORY_CACHE"
@@ -153,6 +156,7 @@ jobs:
           cp "$DIST/msm-kernel.commit" candidate/ 2>/dev/null || true
           cp "$DIST/static-gate.txt" candidate/
           cp "$DIST/self-hosted-timing.txt" candidate/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE/fusion-stage-timings.tsv" candidate/ 2>/dev/null || true
           cp configs/fusion_v2_sources.lock candidate/
           cp configs/fusion_v2_root.fragment candidate/
           cp configs/fusion_v2_standard.fragment candidate/
@@ -198,6 +202,8 @@ jobs:
           cp "$OKI_WORKSPACE"/out/dist/*.config failure-evidence/ 2>/dev/null || true
           cp "$OKI_WORKSPACE"/manifest-pinned.xml failure-evidence/ 2>/dev/null || true
           cp "$OKI_WORKSPACE"/manifest-pinned.xml.sha256 failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE/fusion-stage-timings.tsv" failure-evidence/ 2>/dev/null || true
+          cp "$OKI_WORKSPACE/repo-sync-last.log" failure-evidence/ 2>/dev/null || true
           {
             echo "control_repo_commit=$(git rev-parse HEAD)"
             echo "runner_name=${RUNNER_NAME}"
