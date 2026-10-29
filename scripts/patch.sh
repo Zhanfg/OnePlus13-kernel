@@ -389,18 +389,14 @@ apply_patch_files() {
 
     cd "$KERNEL_DIR"
 
-    # 查找补丁文件
+    # 只应用与指定模式匹配的文件。无匹配时失败，禁止退回成全部 *.patch。
     local patch_files
     mapfile -t patch_files < <(find "$patches_dir" -name "$file_pattern" -type f 2>/dev/null | sort)
 
     if [ ${#patch_files[@]} -eq 0 ]; then
-        # 尝试递归查找
-        mapfile -t patch_files < <(find "$patches_dir" -name "*.patch" -type f 2>/dev/null | sort)
-    fi
-
-    if [ ${#patch_files[@]} -eq 0 ]; then
-        log_warn "  未找到补丁文件: $patches_dir/$file_pattern"
-        return 0
+        log_error "未找到匹配补丁: $patches_dir/$file_pattern"
+        log_error "指定模式无匹配，拒绝回退为应用全部 .patch"
+        return 1
     fi
 
     for patch in "${patch_files[@]}"; do
@@ -715,6 +711,7 @@ cmd_summary() {
 # ============================================================================
 # 入口
 # ============================================================================
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 case "${1:-}" in
     fetch)   cmd_fetch ;;
     apply)   cmd_apply ;;
@@ -730,3 +727,4 @@ case "${1:-}" in
         exit 1
         ;;
 esac
+fi
