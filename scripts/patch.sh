@@ -512,6 +512,75 @@ cmd_fetch() {
     log_done "=== 所有补丁下载完成 ==="
 }
 
+# 读取 get_manifest 的 required 字段。
+# 0 = required 为 true，1 = 不是 true。
+# 缺项或 JSON 无法解析时退出，避免把门禁降级成警告。
+manifest_is_required() {
+    local name="$1"
+    local rc
+    if ! command -v python3 >/dev/null 2>&1; then
+        log_error "需要 python3 才能解析补丁 manifest 的 required 字段: $name"
+        exit 1
+    fi
+    set +e
+    get_manifest | python3 -c '
+import json, sys
+name = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception as exc:
+    sys.stderr.write("manifest JSON 无法解析: %s\n" % exc)
+    sys.exit(2)
+if not isinstance(data, list):
+    sys.stderr.write("manifest 不是数组\n")
+    sys.exit(2)
+for item in data:
+    if isinstance(item, dict) and item.get("name") == name:
+        sys.exit(0 if item.get("required") is True else 1)
+sys.stderr.write("manifest 中没有补丁项: %s\n" % name)
+sys.exit(2)
+' "$name" >/dev/null
+    rc=$?
+    set -e
+    case "$rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *)
+            log_error "无法读取 manifest required 字段: $name"
+            exit 1
+            ;;
+    esac
+}
+
+# required 项失败则退出。optional 项保持原先的忽略失败。
+apply_named_patches() {
+    local name="$1"
+    local patches_dir="$2"
+    local file_pattern="$3"
+    if manifest_is_required "$name"; then
+        if ! apply_patch_files "$patches_dir" "$file_pattern"; then
+            log_error "required 补丁合入失败: $name ($file_pattern)"
+            exit 1
+        fi
+    else
+        apply_patch_files "$patches_dir" "$file_pattern" || true
+    fi
+}
+
+# when_optional=warn 保留原警告；silent 保留原先的静默跳过。
+missing_named_patch() {
+    local name="$1"
+    local message="$2"
+    local when_optional="${3:-warn}"
+    if manifest_is_required "$name"; then
+        log_error "required 补丁缺失: $name: $message"
+        exit 1
+    fi
+    if [ "$when_optional" = "warn" ]; then
+        log_warn "$message"
+    fi
+}
+
 # ============================================================================
 # 按顺序合入补丁
 # ============================================================================
@@ -535,16 +604,23 @@ cmd_apply() {
 
     if [ -d "$PATCHES_DIR/cache/ReSukiSU/kernel" ]; then
         log_info "合入 ReSukiSU 内核补丁..."
-        cp -r "$PATCHES_DIR/cache/ReSukiSU/kernel/"* "$KERNEL_DIR/" 2>/dev/null || true
+        if manifest_is_required resukisu; then
+            cp -r "$PATCHES_DIR/cache/ReSukiSU/kernel/"* "$KERNEL_DIR/" || {
+                log_error "required 补丁合入失败: resukisu"
+                exit 1
+            }
+        else
+            cp -r "$PATCHES_DIR/cache/ReSukiSU/kernel/"* "$KERNEL_DIR/" 2>/dev/null || true
+        fi
         log_done "ReSukiSU 文件已复制"
     else
-        log_warn "ReSukiSU kernel dir 不存在"
+        missing_named_patch resukisu "ReSukiSU kernel dir 不存在" warn
     fi
 
     if [ -d "$PATCHES_DIR/cache/susfs4ksu/kernel_patches" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/susfs4ksu/kernel_patches" "*.patch"
+        apply_named_patches susfs-v2.2.0 "$PATCHES_DIR/cache/susfs4ksu/kernel_patches" "*.patch"
     else
-        log_warn "SuSFS v2.2.0 补丁目录不存在"
+        missing_named_patch susfs-v2.2.0 "SuSFS v2.2.0 补丁目录不存在" warn
     fi
 
     # Step 3: 基础 CONFIG
@@ -562,15 +638,19 @@ cmd_apply() {
             cat "$ROOT_DIR/configs/base_defconfig_fragment" >> "$target_defconfig"
             log_done "defconfig 碎片已追加到 $(basename "$target_defconfig")"
         else
-            log_warn "未找到 defconfig 文件"
+            missing_named_patch base-config "未找到 defconfig 文件" warn
         fi
+    else
+        missing_named_patch base-config "基础配置碎片不存在: $ROOT_DIR/configs/base_defconfig_fragment" silent
     fi
 
     # Step 4: HMBIRD / 风驰
     log_info "--- [Step 4/10] HMBIRD / 风驰 调度补丁 ---"
     if [ -d "$PATCHES_DIR/cache/SCHED_PATCH" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/SCHED_PATCH" "fengchi_oneplus_13*.patch"
-        apply_patch_files "$PATCHES_DIR/cache/SCHED_PATCH" "hmbird*.patch"
+        apply_named_patches hmbird-fengchi "$PATCHES_DIR/cache/SCHED_PATCH" "fengchi_oneplus_13*.patch"
+        apply_named_patches hmbird-fengchi "$PATCHES_DIR/cache/SCHED_PATCH" "hmbird*.patch"
+    else
+        missing_named_patch hmbird-fengchi "HMBIRD/风驰补丁目录不存在: $PATCHES_DIR/cache/SCHED_PATCH" silent
     fi
 
     # 确保默认 wait
@@ -580,16 +660,22 @@ cmd_apply() {
     # Step 5: ADIOS + ZRAM + F2FS
     log_info "--- [Step 5/10] I/O / ZRAM / F2FS ---"
     if [ -d "$PATCHES_DIR/cache/SukiSU_patch" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/SukiSU_patch" "*.patch" || true
+        apply_named_patches zram-full-stack "$PATCHES_DIR/cache/SukiSU_patch" "*.patch"
+    else
+        missing_named_patch zram-full-stack "ZRAM 补丁目录不存在: $PATCHES_DIR/cache/SukiSU_patch" silent
     fi
     if [ -d "$PATCHES_DIR/cache/WildKernels/common" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/common" "f2fs_*.patch" || true
+        apply_named_patches f2fs-optimizations "$PATCHES_DIR/cache/WildKernels/common" "f2fs_*.patch"
+    else
+        missing_named_patch f2fs-optimizations "F2FS 补丁目录不存在: $PATCHES_DIR/cache/WildKernels/common" silent
     fi
 
     # Step 6: BBRv3 + 网络
     log_info "--- [Step 6/10] BBRv3 + 网络栈 ---"
     if [ -d "$PATCHES_DIR/cache/WildKernels/bbr" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/bbr" "*.patch"
+        apply_named_patches bbrv3 "$PATCHES_DIR/cache/WildKernels/bbr" "*.patch"
+    else
+        missing_named_patch bbrv3 "BBRv3 补丁目录不存在: $PATCHES_DIR/cache/WildKernels/bbr" silent
     fi
 
     # Step 7: Baseband Guard
@@ -599,31 +685,45 @@ cmd_apply() {
         cd "$PATCHES_DIR/cache/Baseband-guard"
         # 在 setup.sh 中修改内核路径指向 KERNEL_DIR
         export KERNEL_DIR="$ROOT_DIR/kernel_source"
-        bash setup.sh 2>&1 | sed 's/^/  [BBG] /' || log_warn "BBG setup.sh 执行有警告"
+        if ! bash setup.sh 2>&1 | sed 's/^/  [BBG] /'; then
+            if manifest_is_required baseband-guard; then
+                log_error "Baseband Guard setup.sh 失败"
+                exit 1
+            fi
+            log_warn "BBG setup.sh 执行有警告"
+        fi
         cd "$KERNEL_DIR"
     else
-        log_warn "BBG setup.sh 不存在"
+        missing_named_patch baseband-guard "BBG setup.sh 不存在" warn
     fi
 
     # Step 8: Re:Kernel + 省电
     log_info "--- [Step 8/10] Re:Kernel + 省电补丁 ---"
     if [ -d "$PATCHES_DIR/cache/Re-Kernel" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/Re-Kernel" "*.patch" || true
+        apply_named_patches re-kernel "$PATCHES_DIR/cache/Re-Kernel" "*.patch"
+    else
+        missing_named_patch re-kernel "Re:Kernel 补丁目录不存在: $PATCHES_DIR/cache/Re-Kernel" silent
     fi
     if [ -d "$PATCHES_DIR/cache/WildKernels/common" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/common" "reduce_freeze_timeout*.patch" || true
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/common" "avoid_extra_s2idle*.patch" || true
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/common" "minimise_wakeup_time*.patch" || true
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/common" "add_timeout_wakelocks*.patch" || true
+        apply_named_patches power-saving-common "$PATCHES_DIR/cache/WildKernels/common" "reduce_freeze_timeout*.patch"
+        apply_named_patches power-saving-common "$PATCHES_DIR/cache/WildKernels/common" "avoid_extra_s2idle*.patch"
+        apply_named_patches power-saving-common "$PATCHES_DIR/cache/WildKernels/common" "minimise_wakeup_time*.patch"
+        apply_named_patches power-saving-common "$PATCHES_DIR/cache/WildKernels/common" "add_timeout_wakelocks*.patch"
+    else
+        missing_named_patch power-saving-common "省电补丁目录不存在: $PATCHES_DIR/cache/WildKernels/common" silent
     fi
 
     # Step 9: Droidspaces + NTSYNC + Unicode/XUS
     log_info "--- [Step 9/10] Droidspaces + NTSYNC + Unicode/XUS ---"
     if [ -d "$PATCHES_DIR/cache/Droidspaces" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/Droidspaces" "*.patch" || true
+        apply_named_patches droidspaces "$PATCHES_DIR/cache/Droidspaces" "*.patch"
+    else
+        missing_named_patch droidspaces "Droidspaces 补丁目录不存在: $PATCHES_DIR/cache/Droidspaces" silent
     fi
     if [ -d "$PATCHES_DIR/cache/WildKernels/common/ntsync" ]; then
-        apply_patch_files "$PATCHES_DIR/cache/WildKernels/common/ntsync" "*.patch" || true
+        apply_named_patches ntsync "$PATCHES_DIR/cache/WildKernels/common/ntsync" "*.patch"
+    else
+        missing_named_patch ntsync "NTSYNC 补丁目录不存在: $PATCHES_DIR/cache/WildKernels/common/ntsync" silent
     fi
 
     # Step 10: 编译优化 + LRNG + 内存
@@ -672,7 +772,10 @@ cmd_verify() {
     echo ""
     echo "--- 3) CONFIG 检查 ---"
     if [ -f "$ROOT_DIR/configs/verify_config.sh" ]; then
-        bash "$ROOT_DIR/configs/verify_config.sh" ".config" 2>/dev/null || true
+        if ! bash "$ROOT_DIR/configs/verify_config.sh" ".config"; then
+            log_error "CONFIG 验证失败"
+            exit 1
+        fi
     fi
 
     echo ""
