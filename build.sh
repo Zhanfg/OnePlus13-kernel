@@ -209,12 +209,14 @@ configure_kernel() {
 
     make O="$OUT_DIR" olddefconfig 2>&1 | tail -5
 
-    # 验证配置
+    # 验证最终 .config。olddefconfig 可能关掉强制写入的项，失败必须中止，
+    # 不能带着缺失配置继续编译或打包。
     log_info "验证配置..."
     if [ -f "$ROOT_DIR/configs/verify_config.sh" ]; then
-        bash "$ROOT_DIR/configs/verify_config.sh" "$OUT_DIR/.config" || {
-            log_warn "配置验证有缺失项，请检查"
-        }
+        if ! bash "$ROOT_DIR/configs/verify_config.sh" "$OUT_DIR/.config"; then
+            log_error "配置验证失败，拒绝继续构建与打包"
+            exit 1
+        fi
     fi
 
     log_done "内核配置完成: $OUT_DIR/.config"
