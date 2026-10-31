@@ -209,12 +209,14 @@ configure_kernel() {
 
     make O="$OUT_DIR" olddefconfig 2>&1 | tail -5
 
-    # 验证配置
+    # 验证最终 .config。olddefconfig 可能关掉强制写入的项，失败必须中止，
+    # 不能带着缺失配置继续编译或打包。
     log_info "验证配置..."
     if [ -f "$ROOT_DIR/configs/verify_config.sh" ]; then
-        bash "$ROOT_DIR/configs/verify_config.sh" "$OUT_DIR/.config" || {
-            log_warn "配置验证有缺失项，请检查"
-        }
+        if ! bash "$ROOT_DIR/configs/verify_config.sh" "$OUT_DIR/.config"; then
+            log_error "配置验证失败，拒绝继续构建与打包"
+            exit 1
+        fi
     fi
 
     log_done "内核配置完成: $OUT_DIR/.config"
@@ -312,8 +314,52 @@ package_ak3() {
     rm -rf "$ak3_build"
     mkdir -p "$ak3_build"
 
-    # 复制 AK3 模板
-    cp -r "$AK3_DIR"/* "$ak3_build/" 2>/dev/null || true
+    # 模板缺失时不得打出仅含 Image 的 ZIP，并把它叫做 AK3。
+    if [ ! -d "$AK3_DIR" ]; then
+        log_error "AnyKernel3 模板目录不存在: $AK3_DIR"
+        log_error "拒绝打包: 未生成可刷写 ZIP"
+        exit 1
+    fi
+
+    local ak3_nullglob=0 ak3_missing=0
+    local -a ak3_entries=()
+    local ak3_req
+    if shopt -q nullglob; then
+        ak3_nullglob=1
+    fi
+    shopt -s nullglob
+    ak3_entries=("$AK3_DIR"/*)
+    if [ "$ak3_nullglob" -eq 0 ]; then
+        shopt -u nullglob
+    fi
+    if [ "${#ak3_entries[@]}" -eq 0 ]; then
+        log_error "AnyKernel3 模板目录为空: $AK3_DIR"
+        log_error "拒绝打包: 未生成可刷写 ZIP"
+        exit 1
+    fi
+    if ! cp -r "${ak3_entries[@]}" "$ak3_build/"; then
+        log_error "复制 AnyKernel3 模板失败: $AK3_DIR"
+        log_error "拒绝打包: 未生成可刷写 ZIP"
+        exit 1
+    fi
+
+    local -a required_ak3=(
+        "anykernel.sh"
+        "service.sh"
+        "module.prop"
+        "META-INF/com/google/android/update-binary"
+        "META-INF/com/google/android/updater-script"
+    )
+    for ak3_req in "${required_ak3[@]}"; do
+        if [ ! -f "$ak3_build/$ak3_req" ]; then
+            log_error "AK3 模板缺少必需文件: $ak3_req"
+            ak3_missing=1
+        fi
+    done
+    if [ "$ak3_missing" -ne 0 ]; then
+        log_error "拒绝打包: ZIP 缺少 AnyKernel3 必需文件，未生成可刷写 ZIP"
+        exit 1
+    fi
 
     # 复制内核 Image
     cp "$image" "$ak3_build/Image"
