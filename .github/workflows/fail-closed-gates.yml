@@ -1,0 +1,58 @@
+name: Fail-closed build gates
+
+on:
+  pull_request:
+    paths:
+      - 'build.sh'
+      - 'scripts/patch.sh'
+      - 'configs/verify_config.sh'
+      - 'tests/**'
+      - '.github/workflows/fail-closed-gates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Fusion V2 AK3 package safety checks target the integration branch and a
+# different packager. build.yml and the Fusion launcher are manual.
+# verify-official-oki.yml only watches the pinned OKI manifest.
+# tests/test_policies.py and tests/test_static.py are not gates: they fail
+# the same way on main.
+jobs:
+  gates:
+    name: Syntax, shellcheck, and gate tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: bash -n
+        run: |
+          set -euo pipefail
+          bash -n build.sh
+          bash -n scripts/patch.sh
+          bash -n configs/verify_config.sh
+          bash -n tests/test_config_gate.sh
+          bash -n tests/test_ak3_package_gate.sh
+          bash -n tests/test_patch_selection.sh
+          bash -n tests/test_required_gate.sh
+
+      - name: shellcheck gate tests
+        run: |
+          set -euo pipefail
+          shellcheck \
+            tests/test_config_gate.sh \
+            tests/test_ak3_package_gate.sh \
+            tests/test_patch_selection.sh \
+            tests/test_required_gate.sh
+
+      - name: Run gate tests
+        run: |
+          set -euo pipefail
+          bash tests/test_config_gate.sh
+          bash tests/test_ak3_package_gate.sh
+          bash tests/test_patch_selection.sh
+          bash tests/test_required_gate.sh
