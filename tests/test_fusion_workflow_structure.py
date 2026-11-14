@@ -47,5 +47,10 @@ for section in (
 assert text.count("manifests/oneplus_13_b_20261013_pinned.xml") >= 6
 assert "steps.cache-budget.outputs" in text
 assert "github.run_id" in text
+assert "control_repo_commit=$(git rev-parse HEAD)" in text, "provenance must identify checkout"
+assert "workflow_event_commit=${GITHUB_SHA}" in text, "record workflow trigger separately"
+assert "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}" in text
+failure_evidence_step = text.split("      - name: Upload failure evidence\n", 1)[1]
+assert "retention-days: 30" in failure_evidence_step, "keep failure logs for review"
 
 print(f"PASS: well-structured workflow with {len(steps)} unique steps")
