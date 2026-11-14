@@ -298,7 +298,9 @@ jobs:
           fi
 
           {
-            echo "control_repo_commit=${GITHUB_SHA}"
+            echo "control_repo_commit=$(git rev-parse HEAD)"
+            echo "workflow_event_commit=${GITHUB_SHA}"
+            echo "workflow_run_attempt=${GITHUB_RUN_ATTEMPT}"
             echo "bazel_cache_restore_hit=${{ steps.bazel-cache-restore.outputs.cache-hit }}"
             echo "raw_image_sha256=$(sha256sum candidate/Image.raw | awk '{print $1}')"
             echo "patched_image_sha256=$(sha256sum candidate/Image | awk '{print $1}')"
@@ -348,4 +350,4 @@ jobs:
             oki/manifest-pinned.xml
             oki/manifest-pinned.xml.sha256
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
