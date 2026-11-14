@@ -1,0 +1,51 @@
+name: Fusion V2 cache integrity and budget tests
+on:
+  push:
+    branches:
+      - perf/fusion-v2-cache-pipeline-20261014
+  pull_request:
+    branches:
+      - integration/resukisu-susfs23-kpatchnext
+    paths:
+      - '.github/workflows/fusion-v2-full-oki.yml'
+      - '.github/workflows/fusion-v2-cache-tests.yml'
+      - 'scripts/fusion_cache_status.sh'
+      - 'scripts/fusion_cache_budget.sh'
+      - 'tests/test_fusion_cache_budget.sh'
+      - 'tests/test_fusion_workflow_structure.py'
+      - 'scripts/fusion_v2.sh'
+      - 'tests/test_fusion_pinned_clone.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cache-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          bash -n scripts/fusion_cache_status.sh
+          bash -n scripts/fusion_cache_budget.sh
+          bash -n tests/test_fusion_cache_budget.sh
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/build_fusion_v2_oki.sh
+          bash -n tests/test_fusion_pinned_clone.sh
+      - name: Test cache budgets and source integrity
+        run: bash tests/test_fusion_cache_budget.sh
+      - name: Verify reusable workflow structure
+        run: python3 tests/test_fusion_workflow_structure.py
+      - name: Validate pinned dependency reuse
+        run: bash tests/test_fusion_pinned_clone.sh
+      - name: Inspect pinned source lock and post-sync source checks
+        run: |
+          set -euo pipefail
+          grep -Fq 'repo manifest -r -o manifest-pinned.xml' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'verify_official_platform' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'verify_build_platform' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'verify_fusion_v2_image.sh' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'verify_fusion_v2_release.sh' scripts/build_fusion_v2_oki.sh
+          echo 'PASS: object-cache optimization does not bypass release checks'

@@ -1,0 +1,39 @@
+name: Fusion V2 pinned repo sync reliability
+on:
+  push:
+    branches:
+      - fix/fusion-oki-resilient-pinned-sync-20261014
+  pull_request:
+    branches:
+      - integration/resukisu-susfs23-kpatchnext
+    paths:
+      - 'scripts/repo_sync_pinned_retry.sh'
+      - 'scripts/build_fusion_v2_oki.sh'
+      - 'tests/test_repo_sync_pinned_retry.sh'
+      - '.github/workflows/fusion-v2-sync-retry-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax and fail-closed source sync checks
+        run: |
+          set -euo pipefail
+          bash -n scripts/repo_sync_pinned_retry.sh
+          bash -n scripts/build_fusion_v2_oki.sh
+          bash -n tests/test_repo_sync_pinned_retry.sh
+          bash tests/test_repo_sync_pinned_retry.sh
+      - name: Verify integration still checks reviewed commit pins
+        run: |
+          set -euo pipefail
+          grep -Fq 'bash "$ROOT_DIR/scripts/repo_sync_pinned_retry.sh"' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'verify_official_platform' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'repo manifest -r -o manifest-pinned.xml' scripts/build_fusion_v2_oki.sh
+          grep -Fq 'verify_build_platform' scripts/build_fusion_v2_oki.sh
+          echo 'PASS: retries neither change pins nor bypass repository verification'

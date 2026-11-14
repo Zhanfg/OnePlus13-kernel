@@ -1,0 +1,114 @@
+name: Fusion V2 Source Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-preflight:
+    name: SUSFS 2.3 + ReSukiSU source preflight (not flashable)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout control repo
+        uses: actions/checkout@v4
+
+      - name: Install Kconfig dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison build-essential flex git libelf-dev libssl-dev rsync zlib1g-dev
+
+      - name: Shell syntax gate
+        run: |
+          bash -n scripts/fusion_v2.sh
+          bash -n scripts/apply_fusion_v2_config.sh
+          bash -n scripts/build_fusion_v2_oki.sh
+
+      - name: Clone exact OnePlus common base
+        shell: bash
+        run: |
+          set -euo pipefail
+          source configs/oneplus_13_16.0.9.401.lock
+          mkdir -p preflight/kernel_platform
+          git clone --filter=blob:none --no-checkout "$ONEPLUS_COMMON_REPO" preflight/kernel_platform/common
+          git -C preflight/kernel_platform/common fetch --depth=1 origin "$ONEPLUS_COMMON_SHA"
+          git -C preflight/kernel_platform/common checkout --detach "$ONEPLUS_COMMON_SHA"
+          test "$(git -C preflight/kernel_platform/common rev-parse HEAD)" = "$ONEPLUS_COMMON_SHA"
+
+      - name: Integrate pinned ReSukiSU source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source configs/fusion_v2_sources.lock
+          KP="$PWD/preflight/kernel_platform"
+          COMMON="$KP/common"
+          git clone --filter=blob:none --no-checkout "$RESUKISU_REPO" "$KP/KernelSU"
+          git -C "$KP/KernelSU" fetch --depth=1 origin "$RESUKISU_COMMIT"
+          git -C "$KP/KernelSU" checkout --detach "$RESUKISU_COMMIT"
+          test "$(git -C "$KP/KernelSU" rev-parse HEAD)" = "$RESUKISU_COMMIT"
+          ln -s ../../KernelSU/kernel "$COMMON/drivers/kernelsu"
+          grep -qF 'obj-$(CONFIG_KSU) += kernelsu/' "$COMMON/drivers/Makefile" || printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> "$COMMON/drivers/Makefile"
+          grep -qF 'source "drivers/kernelsu/Kconfig"' "$COMMON/drivers/Kconfig" || sed -i '/^endmenu/i source "drivers/kernelsu/Kconfig"' "$COMMON/drivers/Kconfig"
+          grep -Rqs 'susfs_is_current_proc_no_su' "$KP/KernelSU/kernel"
+          grep -Rqs 'is_zygote_next' "$KP/KernelSU/kernel"
+
+      - name: Check and apply pinned SUSFS 2.3 common patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          source configs/fusion_v2_sources.lock
+          KP="$PWD/preflight/kernel_platform"
+          COMMON="$KP/common"
+          SUS="$PWD/preflight/susfs"
+          git clone --filter=blob:none --no-checkout "$SUSFS_REPO" "$SUS"
+          git -C "$SUS" fetch --depth=1 origin "$SUSFS_COMMIT"
+          git -C "$SUS" checkout --detach "$SUSFS_COMMIT"
+          test "$(git -C "$SUS" rev-parse HEAD)" = "$SUSFS_COMMIT"
+          cp -a "$SUS/$SUSFS_FS_DIR/." "$COMMON/fs/"
+          cp -a "$SUS/$SUSFS_INCLUDE_DIR/." "$COMMON/include/linux/"
+          git -C "$COMMON" apply --check "$SUS/$SUSFS_KERNEL_PATCH"
+          git -C "$COMMON" apply "$SUS/$SUSFS_KERNEL_PATCH"
+          grep -q '#define SUSFS_VERSION "v2.3.0"' "$COMMON/include/linux/susfs.h"
+
+      - name: Apply Fusion V2 root config
+        run: |
+          bash scripts/apply_fusion_v2_config.sh "$PWD/preflight/kernel_platform/common"
+
+      - name: Resolve Kconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMON="$PWD/preflight/kernel_platform/common"
+          OUT="$PWD/preflight/kconfig-out"
+          make -C "$COMMON" O="$OUT" ARCH=arm64 gki_defconfig
+          test -f "$OUT/.config"
+          while IFS= read -r line; do
+            [[ -z "$line" || "$line" == \#\ Fusion* || "$line" == \#\ Required* ]] && continue
+            grep -qxF "$line" "$OUT/.config" || {
+              echo "Resolved config mismatch: $line" >&2
+              exit 1
+            }
+          done < configs/fusion_v2_root.fragment
+
+      - name: Record preflight evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p preflight/evidence
+          git -C preflight/kernel_platform/common status --short > preflight/evidence/common-status.txt 2>/dev/null || true
+          cp preflight/kconfig-out/.config preflight/evidence/resolved.config 2>/dev/null || true
+          {
+            echo 'PRE-FLIGHT ONLY'
+            echo 'This job does not build a complete OnePlus OKI Image and produces no flashable artifact.'
+          } > preflight/evidence/README.txt
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v2-source-preflight
+          path: preflight/evidence/
+          retention-days: 3
