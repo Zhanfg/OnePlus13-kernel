@@ -4,15 +4,18 @@
 前提: 手机已进 Fastboot, 电脑能识别:
   fastboot devices
 
-【方案 A — 刷回官方 16.0.9.401 boot（推荐先试）】
-  cd 到本目录 releases/restore 后:
+刷写前查看 restore-provenance.txt，核对镜像 SHA-256 和当前固件的构建指纹、构建号。
+例如用 sha256sum boot.img 对照 IMAGE_SHA256_boot。若来源不明或标为 unverified，先核实再刷写。
 
-  fastboot flash boot boot.img
-  fastboot reboot
+【方案 A — 恢复当前槽位的 boot】
+  cd 到本目录 releases/restore 后，查询当前槽位:
+  fastboot getvar current-slot
 
-若双槽不确定, 可两个都刷:
-  fastboot flash boot_a boot.img
-  fastboot flash boot_b boot.img
+  读不到 a 或 b 时停止。保留另一槽作为回退，只执行当前槽位对应的一条命令:
+  当前槽位为 a: fastboot flash boot_a boot.img
+  当前槽位为 b: fastboot flash boot_b boot.img
+
+  确认刷写成功后:
   fastboot reboot
 
 【方案 B — 用你确认能刷的 AK3 恢复】
@@ -20,11 +23,12 @@
   刷写 AnyKernel3 -> 选:
   AK3_6_6_144_g4de260df0fc2_Oplus_sun_gki_35662_20260720_2039_comm.zip
 
-  或 Fastboot 下若你已用 magiskboot 打好 boot, 刷该 boot.
+  或 Fastboot 下若你已用 magiskboot 打好 boot，先确认当前槽位，
+  再只刷入对应的 boot_a 或 boot_b。
 
 【本目录文件】
-  boot.img       - 官方 16.0.9.401 boot (~96MB, 含内核)
-  init_boot.img  - 官方 init_boot (~8MB, ramdisk)
+  boot.img       - boot 镜像
+  init_boot.img  - init_boot 镜像
   recovery.img
   dtbo.img
 
@@ -35,5 +39,7 @@
 
 【一般不需要先动 init_boot】
   只刷坏 boot 时, 只恢复 boot.img 即可
-  若仍异常再考虑:
-  fastboot flash init_boot init_boot.img
+  确认 init_boot 也需要恢复时，只执行当前槽位对应的一条命令:
+  当前槽位为 a: fastboot flash init_boot_a init_boot.img
+  当前槽位为 b: fastboot flash init_boot_b init_boot.img
+  其他镜像也只在确认需要恢复时刷入当前槽位的对应分区。
