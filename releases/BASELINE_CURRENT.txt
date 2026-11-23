@@ -6,6 +6,9 @@ TARGET_FIRMWARE_VERSION_SUFFIX=103
 TARGET_FULL_BUILD=unverified
 TARGET_KERNEL_RELEASE=unverified
 TARGET_BUILD_FINGERPRINT=unverified
+RESTORE_PROVENANCE=releases/restore/restore-provenance.txt
+# 提取时记录源 ZIP、镜像的 SHA-256 及包内构建信息。历史镜像仅实测了镜像摘要。
+# 已知源包的可信 SHA-256 时，可通过 EXPECTED_SOURCE_SHA256 在提取前校验。
 CODENAME=sun
 SOC=SM8750
 MANIFEST_REPO=https://github.com/OnePlusOSS/kernel_manifest.git
